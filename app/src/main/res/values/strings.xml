@@ -1,0 +1,4 @@
+<resources>
+    <string name="app_name">SimpleAudioPlayback</string>
+    <string name="pause">Pauze</string>
+</resources>
