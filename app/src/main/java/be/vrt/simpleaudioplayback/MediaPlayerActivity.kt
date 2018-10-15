@@ -27,6 +27,8 @@ class MediaPlayerActivity : AppCompatActivity() {
 
     private lateinit var mediaController: MediaControllerCompat
     private val connectionCallback: MediaBrowserCompat.ConnectionCallback = object : MediaBrowserCompat.ConnectionCallback() {
+        fun checkStateIsPlaying(state : PlaybackStateCompat) = state.state == PlaybackStateCompat.STATE_PLAYING
+
         override fun onConnected() {
             mediaBrowser.sessionToken.also { token ->
                 MediaControllerCompat(
@@ -35,13 +37,10 @@ class MediaPlayerActivity : AppCompatActivity() {
                 )
 
                 mediaController = MediaControllerCompat(this@MediaPlayerActivity, mediaBrowser.sessionToken)
-                playPause.isChecked = mediaController.playbackState.state == PlaybackStateCompat.STATE_PLAYING
+                playPause.isChecked = checkStateIsPlaying(mediaController.playbackState)
                 mediaController.registerCallback(object : MediaControllerCompat.Callback() {
                     override fun onPlaybackStateChanged(state: PlaybackStateCompat) {
-                        when (state.state) {
-                            PlaybackStateCompat.STATE_PLAYING -> isPlaying.set(true)
-                            PlaybackStateCompat.STATE_PAUSED  -> isPlaying.set(false)
-                        }
+                        isPlaying.set(checkStateIsPlaying(state))
                     }
                 })
                 MediaControllerCompat.setMediaController(this@MediaPlayerActivity, mediaController)
