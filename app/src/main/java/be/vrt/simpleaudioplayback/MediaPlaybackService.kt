@@ -31,11 +31,12 @@ class MediaPlaybackService : MediaBrowserServiceCompat(), AudioManager.OnAudioFo
     companion object {
         private const val MY_EMPTY_MEDIA_ROOT_ID = "empty_root_id"
         private const val STUDIO_BRUSSELS_TITLE = "Studio Brussel"
-        private const val STUDIO_BRUSSEL_DESC = "Life is Music"
-        private const val LOG_TAG = "log_tag"
+        private const val STUDIO_BRUSSELS_DESC = "Life is Music"
+        private const val STUDIO_BRUSSELS_LIVE_STREAM_URL = "https://live-vrt.akamaized.net/groupc/live/f404f0f3-3917-40fd-80b6-a152761072fe/live.isml/.m3u8"
+
+        private const val LOG_TAG = "MediaPlaybackService"
         private const val CHANNEL_ID = "1"
         private const val NOTIFICATION_ID = 1345
-        private const val STUDIO_BRUSSELS_LIVE_STREAM_URL = "https://live-vrt.akamaized.net/groupc/live/f404f0f3-3917-40fd-80b6-a152761072fe/live.isml/.m3u8"
     }
 
     private lateinit var mediaSession: MediaSessionCompat
@@ -70,8 +71,6 @@ class MediaPlaybackService : MediaBrowserServiceCompat(), AudioManager.OnAudioFo
         registerReceiver(noisyReceiver, IntentFilter(AudioManager.ACTION_AUDIO_BECOMING_NOISY))
 
         mediaSession = MediaSessionCompat(baseContext, LOG_TAG, ComponentName(applicationContext, MediaButtonReceiver::class.java), null).apply {
-
-            //Media button receiver for pre lollipop
             setMediaButtonReceiver(PendingIntent.getBroadcast(this@MediaPlaybackService, 0, Intent(Intent.ACTION_MEDIA_BUTTON).apply {
                 setClass(
                         this@MediaPlaybackService,
@@ -92,6 +91,11 @@ class MediaPlaybackService : MediaBrowserServiceCompat(), AudioManager.OnAudioFo
 
                 override fun onPause() {
                     handlePause()
+                }
+
+                override fun onStop() {
+                    //TODO: Service should stop on delete intent
+                    stopSelf()
                 }
             })
             setSessionToken(sessionToken)
@@ -132,55 +136,61 @@ class MediaPlaybackService : MediaBrowserServiceCompat(), AudioManager.OnAudioFo
         }.build())
     }
 
-    private fun updateNotification(isPlaying: Boolean): Notification = NotificationCompat.Builder(this, CHANNEL_ID).apply {
-        setContentTitle(STUDIO_BRUSSELS_TITLE)
-        setContentText(STUDIO_BRUSSEL_DESC)
+    private fun updateNotification(isPlaying: Boolean): Notification =
+            NotificationCompat.Builder(this, CHANNEL_ID).apply {
+                setContentTitle(STUDIO_BRUSSELS_TITLE)
+                setContentText(STUDIO_BRUSSELS_DESC)
 
-        setContentIntent(mediaSession.controller.sessionActivity)
-
-        setDeleteIntent(
-                MediaButtonReceiver.buildMediaButtonPendingIntent(
-                        baseContext,
-                        PlaybackStateCompat.ACTION_STOP
-                )
-        )
-
-        setDeleteIntent(MediaButtonReceiver.buildMediaButtonPendingIntent(this@MediaPlaybackService, PlaybackStateCompat.ACTION_STOP))
-
-        setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
-
-        setSmallIcon(R.drawable.ic_notification_icon)
-        color = ContextCompat.getColor(baseContext, R.color.colorPrimary)
-
-        addAction(
-                NotificationCompat.Action(
-                        if (isPlaying) R.drawable.ic_pause else R.drawable.ic_play,
-                        getString(if (isPlaying) R.string.pause else R.string.play),
+                val sessionActivity =
+                        mediaSession.controller.sessionActivity
+                            ?: PendingIntent.getActivity(
+                                    this@MediaPlaybackService,
+                                    0,
+                                    Intent(this@MediaPlaybackService, MediaPlayerActivity::class.java), 0
+                            )
+                setContentIntent(sessionActivity)
+                setDeleteIntent(
                         MediaButtonReceiver.buildMediaButtonPendingIntent(
                                 baseContext,
-                                PlaybackStateCompat.ACTION_PLAY_PAUSE
+                                PlaybackStateCompat.ACTION_STOP
                         )
                 )
-        )
 
-        setStyle(
-                android.support.v4.media.app.NotificationCompat.MediaStyle()
-                        .setMediaSession(mediaSession.sessionToken)
-                        .setShowActionsInCompactView(0)
-                        .setShowCancelButton(true)
-                        .setCancelButtonIntent(
+                setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+
+                setSmallIcon(R.drawable.ic_notification_icon)
+                color = ContextCompat.getColor(baseContext, R.color.colorPrimary)
+
+                addAction(
+                        NotificationCompat.Action(
+                                if (isPlaying) R.drawable.ic_pause else R.drawable.ic_play,
+                                getString(if (isPlaying) R.string.pause else R.string.play),
                                 MediaButtonReceiver.buildMediaButtonPendingIntent(
                                         baseContext,
-                                        PlaybackStateCompat.ACTION_STOP
+                                        PlaybackStateCompat.ACTION_PLAY_PAUSE
                                 )
                         )
-        )
-    }.build().also { NotificationManagerCompat.from(this@MediaPlaybackService).notify(NOTIFICATION_ID, it) }
+                )
+
+                setStyle(
+                        android.support.v4.media.app.NotificationCompat.MediaStyle()
+                                .setMediaSession(mediaSession.sessionToken)
+                                .setShowActionsInCompactView(0)
+                                .setShowCancelButton(true)
+                                .setCancelButtonIntent(
+                                        MediaButtonReceiver.buildMediaButtonPendingIntent(
+                                                baseContext,
+                                                PlaybackStateCompat.ACTION_STOP
+                                        )
+                                )
+                )
+            }.build().also { NotificationManagerCompat.from(this@MediaPlaybackService).notify(NOTIFICATION_ID, it) }
 
     private fun successfullyRetrievedAudioFocus(): Boolean =
             (getSystemService(Context.AUDIO_SERVICE) as AudioManager).requestAudioFocus(
                     this,
-                    AudioManager.STREAM_MUSIC, AudioManager.AUDIOFOCUS_GAIN
+                    AudioManager.STREAM_MUSIC,
+                    AudioManager.AUDIOFOCUS_GAIN
             ) == AudioManager.AUDIOFOCUS_GAIN
 
     override fun onAudioFocusChange(focusChange: Int) {
@@ -195,12 +205,8 @@ class MediaPlaybackService : MediaBrowserServiceCompat(), AudioManager.OnAudioFo
                     audioPlayer.stopPlayback()
                 }
             }
-            AudioManager.AUDIOFOCUS_LOSS_TRANSIENT          -> {
-                handlePause()
-            }
-            AudioManager.AUDIOFOCUS_LOSS_TRANSIENT_CAN_DUCK -> {
-                audioPlayer.setVolume(0.3F, 0.3F)
-            }
+            AudioManager.AUDIOFOCUS_LOSS_TRANSIENT          -> handlePause()
+            AudioManager.AUDIOFOCUS_LOSS_TRANSIENT_CAN_DUCK -> audioPlayer.setVolume(0.3F, 0.3F)
             AudioManager.AUDIOFOCUS_GAIN                    -> {
                 audioPlayer.setVolume(1F, 1F)
                 handlePlay()
