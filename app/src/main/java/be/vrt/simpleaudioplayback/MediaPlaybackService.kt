@@ -4,9 +4,12 @@ import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
+import android.content.BroadcastReceiver
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
+import android.media.AudioManager
 import android.media.AudioManager.STREAM_MUSIC
 import android.net.Uri
 import android.os.Build
@@ -24,28 +27,27 @@ import android.support.v4.media.session.PlaybackStateCompat
 import com.devbrackets.android.exomedia.AudioPlayer
 import com.google.android.exoplayer2.C
 
-class MediaPlaybackService : MediaBrowserServiceCompat() {
-
+class MediaPlaybackService : MediaBrowserServiceCompat(), AudioManager.OnAudioFocusChangeListener {
     companion object {
         private const val MY_EMPTY_MEDIA_ROOT_ID = "empty_root_id"
+        private const val STUDIO_BRUSSELS_TITLE = "Studio Brussel"
+        private const val STUDIO_BRUSSEL_DESC = "Life is Music"
         private const val LOG_TAG = "log_tag"
         private const val CHANNEL_ID = "1"
         private const val NOTIFICATION_ID = 1345
+        private const val STUDIO_BRUSSELS_LIVE_STREAM_URL = "https://live-vrt.akamaized.net/groupc/live/f404f0f3-3917-40fd-80b6-a152761072fe/live.isml/.m3u8"
     }
 
     private lateinit var mediaSession: MediaSessionCompat
-
     private val notificationManager by lazy { getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager }
-
     private val audioPlayer by lazy {
         AudioPlayer(this@MediaPlaybackService).apply {
             setWakeMode(this@MediaPlaybackService, PowerManager.PARTIAL_WAKE_LOCK)
             setAudioStreamType(STREAM_MUSIC)
-            setDataSource(Uri.parse("https://live-vrt.akamaized.net/groupc/live/f404f0f3-3917-40fd-80b6-a152761072fe/live.isml/.m3u8"))
+            setDataSource(Uri.parse(STUDIO_BRUSSELS_LIVE_STREAM_URL))
             prepareAsync()
             seekTo(C.TIME_UNSET)
             setOnErrorListener {
-                println("blablablablbal: $it")
                 true
             }
             setOnCompletionListener {
@@ -53,9 +55,20 @@ class MediaPlaybackService : MediaBrowserServiceCompat() {
             }
         }
     }
+    private val noisyReceiver by lazy {
+        object : BroadcastReceiver() {
+            override fun onReceive(context: Context, intent: Intent) {
+                if (audioPlayer.isPlaying) {
+                    handlePause()
+                }
+            }
+        }
+    }
 
     override fun onCreate() {
         super.onCreate()
+        registerReceiver(noisyReceiver, IntentFilter(AudioManager.ACTION_AUDIO_BECOMING_NOISY))
+
         mediaSession = MediaSessionCompat(baseContext, LOG_TAG, ComponentName(applicationContext, MediaButtonReceiver::class.java), null).apply {
 
             //Media button receiver for pre lollipop
@@ -70,22 +83,15 @@ class MediaPlaybackService : MediaBrowserServiceCompat() {
             setPlaybackState(PlaybackStateCompat.Builder().setActions(PlaybackStateCompat.ACTION_PLAY or PlaybackStateCompat.ACTION_PLAY_PAUSE).build())
             setCallback(object : MediaSessionCompat.Callback() {
                 override fun onPrepare() {
-                    super.onPrepare()
                     this@MediaPlaybackService.mediaSession.isActive = true
                 }
 
                 override fun onPlay() {
-                    startForeground(NOTIFICATION_ID, updateNotification(true))
-                    audioPlayer.start()
-                    setMediaPlaybackState(true)
+                    handlePlay()
                 }
 
                 override fun onPause() {
-                    super.onPause()
-                    updateNotification(false)
-                    stopForeground(false)
-                    audioPlayer.pause()
-                    setMediaPlaybackState(false)
+                    handlePause()
                 }
             })
             setSessionToken(sessionToken)
@@ -96,6 +102,23 @@ class MediaPlaybackService : MediaBrowserServiceCompat() {
         }
 
         startService(Intent(applicationContext, this@MediaPlaybackService.javaClass))
+    }
+
+    private fun handlePause() {
+        updateNotification(false)
+        stopForeground(false)
+        audioPlayer.pause()
+        setMediaPlaybackState(false)
+    }
+
+    private fun handlePlay() {
+        if (!successfullyRetrievedAudioFocus()) {
+            return
+        }
+
+        startForeground(NOTIFICATION_ID, updateNotification(true))
+        audioPlayer.start()
+        setMediaPlaybackState(true)
     }
 
     private fun setMediaPlaybackState(isPlaying: Boolean) {
@@ -110,9 +133,8 @@ class MediaPlaybackService : MediaBrowserServiceCompat() {
     }
 
     private fun updateNotification(isPlaying: Boolean): Notification = NotificationCompat.Builder(this, CHANNEL_ID).apply {
-        setContentTitle("Title")
-        setContentText("Description")
-        setSubText("Subtext")
+        setContentTitle(STUDIO_BRUSSELS_TITLE)
+        setContentText(STUDIO_BRUSSEL_DESC)
 
         setContentIntent(mediaSession.controller.sessionActivity)
 
@@ -153,6 +175,37 @@ class MediaPlaybackService : MediaBrowserServiceCompat() {
         )
     }.build().also { NotificationManagerCompat.from(this@MediaPlaybackService).notify(NOTIFICATION_ID, it) }
 
+    private fun successfullyRetrievedAudioFocus(): Boolean =
+            (getSystemService(Context.AUDIO_SERVICE) as AudioManager).requestAudioFocus(
+                    this,
+                    AudioManager.STREAM_MUSIC, AudioManager.AUDIOFOCUS_GAIN
+            ) == AudioManager.AUDIOFOCUS_GAIN
+
+    override fun onAudioFocusChange(focusChange: Int) {
+        when (focusChange) {
+            AudioManager.AUDIOFOCUS_LOSS                    -> {
+                if (audioPlayer.isPlaying) {
+                    //TODO:
+                    // Debatable:
+                    // Update the notification too or call handlePause?
+                    // or should we completely shut down the service?
+                    handlePause()
+                    audioPlayer.stopPlayback()
+                }
+            }
+            AudioManager.AUDIOFOCUS_LOSS_TRANSIENT          -> {
+                handlePause()
+            }
+            AudioManager.AUDIOFOCUS_LOSS_TRANSIENT_CAN_DUCK -> {
+                audioPlayer.setVolume(0.3F, 0.3F)
+            }
+            AudioManager.AUDIOFOCUS_GAIN                    -> {
+                audioPlayer.setVolume(1F, 1F)
+                handlePlay()
+            }
+        }
+    }
+
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         MediaButtonReceiver.handleIntent(mediaSession, intent)
         return super.onStartCommand(intent, flags, startId)
@@ -172,6 +225,7 @@ class MediaPlaybackService : MediaBrowserServiceCompat() {
 
     override fun onDestroy() {
         super.onDestroy()
+        audioPlayer.release()
         mediaSession.release()
         NotificationManagerCompat.from(this).cancel(NOTIFICATION_ID)
     }
