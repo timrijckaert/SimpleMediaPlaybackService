@@ -9,8 +9,11 @@ import android.support.v4.media.session.MediaControllerCompat
 import android.support.v4.media.session.PlaybackStateCompat
 import android.support.v7.app.AppCompatActivity
 import kotlinx.android.synthetic.main.activity_main.*
+import java.util.concurrent.atomic.AtomicBoolean
 
 class MediaPlayerActivity : AppCompatActivity() {
+
+    private val isPlaying: AtomicBoolean = AtomicBoolean(false)
 
     private val mediaControllerCallback = object : MediaControllerCompat.Callback() {
         override fun onMetadataChanged(metadata: MediaMetadataCompat?) {
@@ -32,11 +35,17 @@ class MediaPlayerActivity : AppCompatActivity() {
                 )
 
                 mediaController = MediaControllerCompat(this@MediaPlayerActivity, mediaBrowser.sessionToken)
+                playPause.isChecked = mediaController.playbackState.state == PlaybackStateCompat.STATE_PLAYING
+                mediaController.registerCallback(object : MediaControllerCompat.Callback() {
+                    override fun onPlaybackStateChanged(state: PlaybackStateCompat) {
+                        when (state.state) {
+                            PlaybackStateCompat.STATE_PLAYING -> isPlaying.set(true)
+                            PlaybackStateCompat.STATE_PAUSED  -> isPlaying.set(false)
+                        }
+                    }
+                })
                 MediaControllerCompat.setMediaController(this@MediaPlayerActivity, mediaController)
             }
-
-            play.setOnClickListener { mediaController.transportControls.play() }
-            pause.setOnClickListener { mediaController.transportControls.pause() }
 
             mediaController.registerCallback(mediaControllerCallback)
         }
@@ -62,6 +71,13 @@ class MediaPlayerActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
+        playPause.setOnClickListener {
+            if (isPlaying.get()) {
+                mediaController.transportControls.pause()
+            } else {
+                mediaController.transportControls.play()
+            }
+        }
     }
 
     override fun onStart() {

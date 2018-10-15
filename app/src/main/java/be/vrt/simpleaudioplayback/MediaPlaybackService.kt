@@ -145,6 +145,8 @@ class MediaPlaybackService : MediaBrowserServiceCompat(), AudioManager.OnAudioFo
                 )
         )
 
+        setDeleteIntent(MediaButtonReceiver.buildMediaButtonPendingIntent(this@MediaPlaybackService, PlaybackStateCompat.ACTION_STOP))
+
         setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
 
         setSmallIcon(R.drawable.ic_notification_icon)
