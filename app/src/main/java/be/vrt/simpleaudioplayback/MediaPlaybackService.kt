@@ -15,19 +15,20 @@ import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.os.PowerManager
-import android.support.annotation.RequiresApi
-import android.support.v4.app.NotificationCompat
-import android.support.v4.app.NotificationManagerCompat
-import android.support.v4.content.ContextCompat
 import android.support.v4.media.MediaBrowserCompat
-import android.support.v4.media.MediaBrowserServiceCompat
-import android.support.v4.media.session.MediaButtonReceiver
 import android.support.v4.media.session.MediaSessionCompat
 import android.support.v4.media.session.PlaybackStateCompat
+import androidx.annotation.RequiresApi
+import androidx.core.app.NotificationCompat
+import androidx.core.app.NotificationManagerCompat
+import androidx.core.content.ContextCompat
+import androidx.media.MediaBrowserServiceCompat
+import androidx.media.session.MediaButtonReceiver
 import com.devbrackets.android.exomedia.AudioPlayer
 import com.google.android.exoplayer2.C
 
 class MediaPlaybackService : MediaBrowserServiceCompat(), AudioManager.OnAudioFocusChangeListener {
+
     companion object {
         private const val MY_EMPTY_MEDIA_ROOT_ID = "empty_root_id"
         private const val STUDIO_BRUSSELS_TITLE = "Studio Brussel"
@@ -40,7 +41,7 @@ class MediaPlaybackService : MediaBrowserServiceCompat(), AudioManager.OnAudioFo
     }
 
     private lateinit var mediaSession: MediaSessionCompat
-    private val notificationManager by lazy { getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager }
+    private val notificationManager get() = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
     private val audioPlayer by lazy {
         AudioPlayer(this@MediaPlaybackService).apply {
             setWakeMode(this@MediaPlaybackService, PowerManager.PARTIAL_WAKE_LOCK)
@@ -68,17 +69,19 @@ class MediaPlaybackService : MediaBrowserServiceCompat(), AudioManager.OnAudioFo
 
     override fun onCreate() {
         super.onCreate()
-        registerReceiver(noisyReceiver, IntentFilter(AudioManager.ACTION_AUDIO_BECOMING_NOISY))
-
-        mediaSession = MediaSessionCompat(baseContext, LOG_TAG, ComponentName(applicationContext, MediaButtonReceiver::class.java), null).apply {
+        mediaSession = MediaSessionCompat(
+                baseContext,
+                LOG_TAG,
+                ComponentName(applicationContext, androidx.media.session.MediaButtonReceiver::class.java),
+                null
+        ).apply {
             setMediaButtonReceiver(PendingIntent.getBroadcast(this@MediaPlaybackService, 0, Intent(Intent.ACTION_MEDIA_BUTTON).apply {
                 setClass(
                         this@MediaPlaybackService,
-                        MediaButtonReceiver::class.java
+                        androidx.media.session.MediaButtonReceiver::class.java
                 )
             }, 0))
 
-            setFlags(MediaSessionCompat.FLAG_HANDLES_MEDIA_BUTTONS or MediaSessionCompat.FLAG_HANDLES_TRANSPORT_CONTROLS)
             setPlaybackState(PlaybackStateCompat.Builder().setActions(PlaybackStateCompat.ACTION_PLAY or PlaybackStateCompat.ACTION_PLAY_PAUSE).build())
             setCallback(object : MediaSessionCompat.Callback() {
                 override fun onPrepare() {
@@ -108,7 +111,15 @@ class MediaPlaybackService : MediaBrowserServiceCompat(), AudioManager.OnAudioFo
         startService(Intent(applicationContext, this@MediaPlaybackService.javaClass))
     }
 
+    override fun onDestroy() {
+        super.onDestroy()
+        audioPlayer.release()
+        mediaSession.release()
+        NotificationManagerCompat.from(this).cancel(NOTIFICATION_ID)
+    }
+
     private fun handlePause() {
+        unregisterReceiver(noisyReceiver)
         updateNotification(false)
         stopForeground(false)
         audioPlayer.pause()
@@ -120,6 +131,7 @@ class MediaPlaybackService : MediaBrowserServiceCompat(), AudioManager.OnAudioFo
             return
         }
 
+        registerReceiver(noisyReceiver, IntentFilter(AudioManager.ACTION_AUDIO_BECOMING_NOISY))
         startForeground(NOTIFICATION_ID, updateNotification(true))
         audioPlayer.start()
         setMediaPlaybackState(true)
@@ -132,7 +144,11 @@ class MediaPlaybackService : MediaBrowserServiceCompat(), AudioManager.OnAudioFo
             } else {
                 setActions(PlaybackStateCompat.ACTION_PLAY_PAUSE or PlaybackStateCompat.ACTION_PLAY)
             }
-            setState(if (isPlaying) PlaybackStateCompat.STATE_PLAYING else PlaybackStateCompat.STATE_PAUSED, PlaybackStateCompat.PLAYBACK_POSITION_UNKNOWN, 0f)
+            setState(
+                    if (isPlaying) PlaybackStateCompat.STATE_PLAYING else PlaybackStateCompat.STATE_PAUSED,
+                    PlaybackStateCompat.PLAYBACK_POSITION_UNKNOWN,
+                    0f
+            )
         }.build())
     }
 
@@ -173,7 +189,7 @@ class MediaPlaybackService : MediaBrowserServiceCompat(), AudioManager.OnAudioFo
                 )
 
                 setStyle(
-                        android.support.v4.media.app.NotificationCompat.MediaStyle()
+                        androidx.media.app.NotificationCompat.MediaStyle()
                                 .setMediaSession(mediaSession.sessionToken)
                                 .setShowActionsInCompactView(0)
                                 .setShowCancelButton(true)
@@ -231,13 +247,9 @@ class MediaPlaybackService : MediaBrowserServiceCompat(), AudioManager.OnAudioFo
         }
     }
 
-    override fun onDestroy() {
-        super.onDestroy()
-        audioPlayer.release()
-        mediaSession.release()
-        NotificationManagerCompat.from(this).cancel(NOTIFICATION_ID)
-    }
-
     override fun onLoadChildren(parentId: String, result: Result<MutableList<MediaBrowserCompat.MediaItem>>) = result.sendResult(null)
-    override fun onGetRoot(clientPackageName: String, clientUid: Int, rootHints: Bundle?) = MediaBrowserServiceCompat.BrowserRoot(MY_EMPTY_MEDIA_ROOT_ID, null)
+    override fun onGetRoot(clientPackageName: String, clientUid: Int, rootHints: Bundle?) = MediaBrowserServiceCompat.BrowserRoot(
+            MY_EMPTY_MEDIA_ROOT_ID,
+            null
+    )
 }
