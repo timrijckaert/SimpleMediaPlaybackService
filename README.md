@@ -1,19 +1,25 @@
-Simple music service that is able to stream a simple audio stream (Studio Brussels)
-The used player is ExoMedia, but any player would do.
+Simple Music Service that is able to stream a simple audio stream to be used like a radio player. ([Studio Brussels][2] and [MNM][3] from [VRT][1])  
+No metadata is (_yet_) included.  
 
-The following specs are required by Android best practices.
+The used player is [ExoMedia][4], but any player would do.
 
-Specs:
-- The service is started as a foreground service which means a notification is shown at all times music plays.
-- The notification can not be swiped away whilst music is playing
-- The notification can be swiped away when music is paused/stopped
-- The service should be killed when the notification is swiped away [TODO]
-- The notification should show the current play back state of the service (play/pause)
-- The notification buttons should work (play/pause music)
-- When clicking on a notification it should open the app
-- When the activity is killed the notification should still be shown and music should still play
-- When an audio jack is plugged in while audio is playing and it disconnects, music playback should pause.
-- When a user opens up another music app the service should stop playing music.
-- When a user receives a notification the music should duck (lower the volume temporarily) [TO CHECK]
-- When a user receives a call the service should stop playing [TO CHECK]
-- When destroying the activity and reopening it, it should show the correct state
+The following list of specs are required by [Android best practices][5].  
+This is the current state of the service:  
+- The service is started as a foreground service which means a notification is shown during music playback. :heavy_check_mark:
+- The notification can not be swiped away whilst music is playing :heavy_check_mark:
+- The notification can be swiped away when music is paused/stopped :heavy_check_mark:
+- The service should be killed when the notification is swiped away :x: [Delete Intent does not fire?]
+- The notification should show the current play back state of the service (play/pause) :heavy_check_mark:
+- When clicking on a notification it should open the app :heavy_check_mark:
+- When the activity is killed the notification should still be shown and music should still play :heavy_check_mark:
+- When an audio jack is plugged in while audio is playing and it disconnects, music playback should pause. :heavy_check_mark:
+- When a user opens up another music app the service should stop playing music. :heavy_check_mark:
+- When a user receives a notification (with sound) the music should lower the volume temporarily :heavy_check_mark:
+- When a user receives a call the service should stop playing :heavy_check_mark:
+- When the user opens up another music app the music player should pause. :heavy_check_mark:
+
+[1]: http://vrt.be/
+[2]: https://stubru.be/
+[3]: https://mnm.be/
+[4]: https://github.com/brianwernick/ExoMedia
+[5]: https://developer.android.com/guide/topics/media-apps/audio-app/building-an-audio-app
