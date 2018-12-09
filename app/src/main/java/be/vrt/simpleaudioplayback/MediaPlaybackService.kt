@@ -86,6 +86,7 @@ class MediaPlaybackService : MediaBrowserServiceCompat(), AudioManager.OnAudioFo
             }
         }
     }
+
     private val noisyReceiver by lazy {
         object : BroadcastReceiver() {
             override fun onReceive(context: Context, intent: Intent) {
@@ -94,83 +95,6 @@ class MediaPlaybackService : MediaBrowserServiceCompat(), AudioManager.OnAudioFo
                 }
             }
         }
-    }
-
-    override fun onCreate() {
-        super.onCreate()
-        mediaSession = MediaSessionCompat(
-                baseContext,
-                LOG_TAG,
-                ComponentName(applicationContext, MediaButtonReceiver::class.java),
-                null
-        ).apply {
-            setMediaButtonReceiver(
-                    PendingIntent.getBroadcast(
-                            this@MediaPlaybackService, 0, Intent(Intent.ACTION_MEDIA_BUTTON)
-                            .apply {
-                                setClass(
-                                        this@MediaPlaybackService,
-                                        MediaButtonReceiver::class.java
-                                )
-                            },
-                            0
-                    )
-            )
-
-            setPlaybackState(Builder().setActions(ACTION_PLAY or ACTION_PLAY_PAUSE).build())
-
-            setCallback(object : MediaSessionCompat.Callback() {
-                override fun onPrepare() {
-                    this@MediaPlaybackService.mediaSession.isActive = true
-                }
-
-                override fun onPlay() {
-                    handlePlay()
-                }
-
-                override fun onPause() {
-                    handlePause()
-                }
-
-                override fun onStop() {
-                    stopSelf()
-                }
-
-                override fun onPrepareFromMediaId(mediaId: String, extras: Bundle) {
-                    audioPlayer.setDataSource(Uri.parse(mediaId))
-                    setMetadata(
-                            MediaMetadataCompat.Builder()
-                                    .putString(METADATA_KEY_TITLE, extras.getString(EXTRA_TITLE))
-                                    .putString(METADATA_KEY_ARTIST, extras.getString(EXTRA_DESC))
-                                    .putBitmap(METADATA_KEY_ALBUM_ART, BitmapFactory.decodeResource(resources, extras.getInt(EXTRA_ICON)))
-                                    .build()
-                    )
-                    handlePlay()
-                }
-            })
-            setSessionToken(sessionToken)
-        }
-
-        mediaController = MediaControllerCompat(this, mediaSession).also {
-            it.registerCallback(object : MediaControllerCompat.Callback() {
-                override fun onPlaybackStateChanged(state: PlaybackStateCompat?) {
-                    state?.let { updateNotification(it) }
-                }
-
-                override fun onMetadataChanged(metadata: MediaMetadataCompat?) {
-                    mediaController.playbackState?.let { updateNotification(it) }
-                }
-            })
-        }
-
-        startService(Intent(applicationContext, this@MediaPlaybackService.javaClass))
-    }
-
-    override fun onDestroy() {
-        super.onDestroy()
-        audioPlayer.release()
-        mediaSession.release()
-        notificationManager.cancel(NOTIFICATION_ID)
     }
 
     private fun handlePause() {
@@ -203,6 +127,7 @@ class MediaPlaybackService : MediaBrowserServiceCompat(), AudioManager.OnAudioFo
         )
     }
 
+    //<editor-fold desc="Notification">
     private fun updateNotification(state: PlaybackStateCompat) {
         fun buildNotification(): Notification {
             if (shouldCreateNowPlayingChannel()) {
@@ -309,6 +234,27 @@ class MediaPlaybackService : MediaBrowserServiceCompat(), AudioManager.OnAudioFo
         }
     }
 
+    @RequiresApi(Build.VERSION_CODES.O)
+    private fun initializeChannelForOreo() {
+        if (notificationManager.getNotificationChannel(CHANNEL_ID) == null) {
+            notificationManager.createNotificationChannel(
+                    NotificationChannel(
+                            CHANNEL_ID,
+                            "whatever",
+                            NotificationManager.IMPORTANCE_LOW
+                    ).apply { description = "VRT Audio Service" })
+        }
+    }
+
+    private fun shouldCreateNowPlayingChannel() =
+            Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && !nowPlayingChannelExists()
+
+    @RequiresApi(Build.VERSION_CODES.O)
+    fun nowPlayingChannelExists() =
+            notificationManager.getNotificationChannel(CHANNEL_ID) != null
+    //</editor-fold>
+
+    //<editor-fold desc="Audio Focus">
     @get:RequiresApi(Build.VERSION_CODES.O)
     private val audioFocusRequest by lazy { buildFocusRequest() }
 
@@ -356,6 +302,7 @@ class MediaPlaybackService : MediaBrowserServiceCompat(), AudioManager.OnAudioFo
             if (shouldPlayWhenReady) {
                 shouldPlayWhenReady = false
             }
+            handlePause()
             abandonAudioFocus()
         }
     }
@@ -389,30 +336,89 @@ class MediaPlaybackService : MediaBrowserServiceCompat(), AudioManager.OnAudioFo
             audioManager.abandonAudioFocus(this)
         }
     }
+    //</editor-fold>
+
+    override fun onCreate() {
+        super.onCreate()
+        mediaSession = MediaSessionCompat(
+                baseContext,
+                LOG_TAG,
+                ComponentName(applicationContext, MediaButtonReceiver::class.java),
+                null
+        ).apply {
+            setMediaButtonReceiver(
+                    PendingIntent.getBroadcast(
+                            this@MediaPlaybackService, 0, Intent(Intent.ACTION_MEDIA_BUTTON)
+                            .apply {
+                                setClass(
+                                        this@MediaPlaybackService,
+                                        MediaButtonReceiver::class.java
+                                )
+                            },
+                            0
+                    )
+            )
+
+            setPlaybackState(Builder().setActions(ACTION_PLAY or ACTION_PLAY_PAUSE).build())
+
+            setCallback(object : MediaSessionCompat.Callback() {
+                override fun onPrepare() {
+                    this@MediaPlaybackService.mediaSession.isActive = true
+                }
+
+                override fun onPlay() {
+                    handlePlay()
+                }
+
+                override fun onPause() {
+                    handlePause()
+                }
+
+                override fun onStop() {
+                    stopSelf()
+                }
+
+                override fun onPrepareFromMediaId(mediaId: String, extras: Bundle) {
+                    audioPlayer.setDataSource(Uri.parse(mediaId))
+                    setMetadata(
+                            MediaMetadataCompat.Builder()
+                                    .putString(METADATA_KEY_TITLE, extras.getString(EXTRA_TITLE))
+                                    .putString(METADATA_KEY_ARTIST, extras.getString(EXTRA_DESC))
+                                    .putBitmap(METADATA_KEY_ALBUM_ART, BitmapFactory.decodeResource(resources, extras.getInt(EXTRA_ICON)))
+                                    .build()
+                    )
+                    handlePlay()
+                }
+            })
+            setSessionToken(sessionToken)
+        }
+
+        mediaController = MediaControllerCompat(this, mediaSession).also {
+            it.registerCallback(object : MediaControllerCompat.Callback() {
+                override fun onPlaybackStateChanged(state: PlaybackStateCompat?) {
+                    state?.let { updateNotification(it) }
+                }
+
+                override fun onMetadataChanged(metadata: MediaMetadataCompat?) {
+                    mediaController.playbackState?.let { updateNotification(it) }
+                }
+            })
+        }
+
+        startService(Intent(applicationContext, this@MediaPlaybackService.javaClass))
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        audioPlayer.release()
+        mediaSession.release()
+        notificationManager.cancel(NOTIFICATION_ID)
+    }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         MediaButtonReceiver.handleIntent(mediaSession, intent)
         return super.onStartCommand(intent, flags, startId)
     }
-
-    @RequiresApi(Build.VERSION_CODES.O)
-    private fun initializeChannelForOreo() {
-        if (notificationManager.getNotificationChannel(CHANNEL_ID) == null) {
-            notificationManager.createNotificationChannel(
-                    NotificationChannel(
-                            CHANNEL_ID,
-                            "whatever",
-                            NotificationManager.IMPORTANCE_LOW
-                    ).apply { description = "VRT Audio Service" })
-        }
-    }
-
-    private fun shouldCreateNowPlayingChannel() =
-            Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && !nowPlayingChannelExists()
-
-    @RequiresApi(Build.VERSION_CODES.O)
-    fun nowPlayingChannelExists() =
-            notificationManager.getNotificationChannel(CHANNEL_ID) != null
 
     override fun onLoadChildren(parentId: String, result: Result<MutableList<MediaBrowserCompat.MediaItem>>) = result.sendResult(null)
     override fun onGetRoot(clientPackageName: String, clientUid: Int, rootHints: Bundle?) = MediaBrowserServiceCompat.BrowserRoot(
