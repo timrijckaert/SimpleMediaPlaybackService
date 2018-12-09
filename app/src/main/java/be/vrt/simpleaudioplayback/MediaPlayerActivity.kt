@@ -13,11 +13,9 @@ import java.util.concurrent.atomic.AtomicBoolean
 
 class MediaPlayerActivity : AppCompatActivity() {
 
-    private val isPlaying: AtomicBoolean = AtomicBoolean(false)
-
     private val mediaControllerCallback = object : MediaControllerCompat.Callback() {
         override fun onMetadataChanged(metadata: MediaMetadataCompat?) {
-
+            println(metadata)
         }
 
         override fun onPlaybackStateChanged(state: PlaybackStateCompat?) {
@@ -25,10 +23,10 @@ class MediaPlayerActivity : AppCompatActivity() {
         }
     }
 
+    private fun checkStateIsPlaying(state: PlaybackStateCompat?) = state?.let { it.state == PlaybackStateCompat.STATE_PLAYING } ?: false
+
     private lateinit var mediaController: MediaControllerCompat
     private val connectionCallback: MediaBrowserCompat.ConnectionCallback = object : MediaBrowserCompat.ConnectionCallback() {
-        fun checkStateIsPlaying(state : PlaybackStateCompat) = state.state == PlaybackStateCompat.STATE_PLAYING
-
         override fun onConnected() {
             mediaBrowser.sessionToken.also { token ->
                 MediaControllerCompat(
@@ -37,12 +35,6 @@ class MediaPlayerActivity : AppCompatActivity() {
                 )
 
                 mediaController = MediaControllerCompat(this@MediaPlayerActivity, mediaBrowser.sessionToken)
-                playPause.isChecked = checkStateIsPlaying(mediaController.playbackState)
-                mediaController.registerCallback(object : MediaControllerCompat.Callback() {
-                    override fun onPlaybackStateChanged(state: PlaybackStateCompat) {
-                        isPlaying.set(checkStateIsPlaying(state))
-                    }
-                })
                 MediaControllerCompat.setMediaController(this@MediaPlayerActivity, mediaController)
             }
 
@@ -67,15 +59,21 @@ class MediaPlayerActivity : AppCompatActivity() {
         )
     }
 
+    private val mediaPlaybackController
+        get() = mediaController.transportControls
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
-        playPause.setOnClickListener {
-            if (isPlaying.get()) {
-                mediaController.transportControls.pause()
-            } else {
-                mediaController.transportControls.play()
-            }
+
+        studioBrussel.setOnClickListener {
+            mediaPlaybackController.prepareFromMediaId(
+                    "https://live-vrt.akamaized.net/groupc/live/f404f0f3-3917-40fd-80b6-a152761072fe/live.isml/.m3u8",
+                    Bundle().apply {
+                        putString(MediaPlaybackService.EXTRA_TITLE, "Studio Brussel")
+                        putString(MediaPlaybackService.EXTRA_DESC, "Life is your mother")
+                    }
+            )
         }
     }
 

@@ -16,8 +16,20 @@ import android.os.Build
 import android.os.Bundle
 import android.os.PowerManager
 import android.support.v4.media.MediaBrowserCompat
+import android.support.v4.media.MediaMetadataCompat
+import android.support.v4.media.MediaMetadataCompat.METADATA_KEY_ALBUM
+import android.support.v4.media.MediaMetadataCompat.METADATA_KEY_TITLE
+import android.support.v4.media.session.MediaControllerCompat
 import android.support.v4.media.session.MediaSessionCompat
 import android.support.v4.media.session.PlaybackStateCompat
+import android.support.v4.media.session.PlaybackStateCompat.ACTION_PAUSE
+import android.support.v4.media.session.PlaybackStateCompat.ACTION_PLAY
+import android.support.v4.media.session.PlaybackStateCompat.ACTION_PLAY_PAUSE
+import android.support.v4.media.session.PlaybackStateCompat.ACTION_STOP
+import android.support.v4.media.session.PlaybackStateCompat.Builder
+import android.support.v4.media.session.PlaybackStateCompat.PLAYBACK_POSITION_UNKNOWN
+import android.support.v4.media.session.PlaybackStateCompat.STATE_PAUSED
+import android.support.v4.media.session.PlaybackStateCompat.STATE_PLAYING
 import androidx.annotation.RequiresApi
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
@@ -30,26 +42,28 @@ import com.google.android.exoplayer2.C
 class MediaPlaybackService : MediaBrowserServiceCompat(), AudioManager.OnAudioFocusChangeListener {
 
     companion object {
-        private const val MY_EMPTY_MEDIA_ROOT_ID = "empty_root_id"
-        private const val STUDIO_BRUSSELS_TITLE = "Studio Brussel"
-        private const val STUDIO_BRUSSELS_DESC = "Life is Music"
-        private const val STUDIO_BRUSSELS_LIVE_STREAM_URL = "https://live-vrt.akamaized.net/groupc/live/f404f0f3-3917-40fd-80b6-a152761072fe/live.isml/.m3u8"
+        private const val EMPTY_MEDIA_ROOT_ID = "empty_root_id"
+
+        const val EXTRA_TITLE = "be.vrt.simple.audio.playback.EXTRA_TITLE"
+        const val EXTRA_DESC = "be.vrt.simple.audio.playback.EXTRA_DESC"
 
         private const val LOG_TAG = "MediaPlaybackService"
-        private const val CHANNEL_ID = "1"
+        private const val CHANNEL_ID = "1349"
         private const val NOTIFICATION_ID = 1345
     }
 
     private lateinit var mediaSession: MediaSessionCompat
+    private lateinit var mediaController: MediaControllerCompat
+
     private val notificationManager get() = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
     private val audioPlayer by lazy {
         AudioPlayer(this@MediaPlaybackService).apply {
             setWakeMode(this@MediaPlaybackService, PowerManager.PARTIAL_WAKE_LOCK)
             setAudioStreamType(STREAM_MUSIC)
-            setDataSource(Uri.parse(STUDIO_BRUSSELS_LIVE_STREAM_URL))
             prepareAsync()
             seekTo(C.TIME_UNSET)
             setOnErrorListener {
+                stopSelf()
                 true
             }
             setOnCompletionListener {
@@ -72,17 +86,24 @@ class MediaPlaybackService : MediaBrowserServiceCompat(), AudioManager.OnAudioFo
         mediaSession = MediaSessionCompat(
                 baseContext,
                 LOG_TAG,
-                ComponentName(applicationContext, androidx.media.session.MediaButtonReceiver::class.java),
+                ComponentName(applicationContext, MediaButtonReceiver::class.java),
                 null
         ).apply {
-            setMediaButtonReceiver(PendingIntent.getBroadcast(this@MediaPlaybackService, 0, Intent(Intent.ACTION_MEDIA_BUTTON).apply {
-                setClass(
-                        this@MediaPlaybackService,
-                        androidx.media.session.MediaButtonReceiver::class.java
-                )
-            }, 0))
+            setMediaButtonReceiver(
+                    PendingIntent.getBroadcast(
+                            this@MediaPlaybackService, 0, Intent(Intent.ACTION_MEDIA_BUTTON)
+                            .apply {
+                                setClass(
+                                        this@MediaPlaybackService,
+                                        MediaButtonReceiver::class.java
+                                )
+                            },
+                            0
+                    )
+            )
 
-            setPlaybackState(PlaybackStateCompat.Builder().setActions(PlaybackStateCompat.ACTION_PLAY or PlaybackStateCompat.ACTION_PLAY_PAUSE).build())
+            setPlaybackState(Builder().setActions(ACTION_PLAY or ACTION_PLAY_PAUSE).build())
+
             setCallback(object : MediaSessionCompat.Callback() {
                 override fun onPrepare() {
                     this@MediaPlaybackService.mediaSession.isActive = true
@@ -97,11 +118,33 @@ class MediaPlaybackService : MediaBrowserServiceCompat(), AudioManager.OnAudioFo
                 }
 
                 override fun onStop() {
-                    //TODO: Service should stop on delete intent
                     stopSelf()
+                }
+
+                override fun onPrepareFromMediaId(mediaId: String, extras: Bundle) {
+                    audioPlayer.setDataSource(Uri.parse(mediaId))
+                    setMetadata(
+                            MediaMetadataCompat.Builder()
+                                    .putString(METADATA_KEY_TITLE, extras.getString(EXTRA_TITLE))
+                                    .putString(METADATA_KEY_ALBUM, extras.getString(EXTRA_DESC))
+                                    .build()
+                    )
+                    handlePlay()
                 }
             })
             setSessionToken(sessionToken)
+        }
+
+        mediaController = MediaControllerCompat(this, mediaSession).also {
+            it.registerCallback(object : MediaControllerCompat.Callback() {
+                override fun onPlaybackStateChanged(state: PlaybackStateCompat?) {
+                    updateNotification()
+                }
+
+                override fun onMetadataChanged(metadata: MediaMetadataCompat?) {
+                    startForeground(NOTIFICATION_ID, updateNotification())
+                }
+            })
         }
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -120,7 +163,6 @@ class MediaPlaybackService : MediaBrowserServiceCompat(), AudioManager.OnAudioFo
 
     private fun handlePause() {
         unregisterReceiver(noisyReceiver)
-        updateNotification(false)
         stopForeground(false)
         audioPlayer.pause()
         setMediaPlaybackState(false)
@@ -132,30 +174,35 @@ class MediaPlaybackService : MediaBrowserServiceCompat(), AudioManager.OnAudioFo
         }
 
         registerReceiver(noisyReceiver, IntentFilter(AudioManager.ACTION_AUDIO_BECOMING_NOISY))
-        startForeground(NOTIFICATION_ID, updateNotification(true))
         audioPlayer.start()
         setMediaPlaybackState(true)
     }
 
     private fun setMediaPlaybackState(isPlaying: Boolean) {
-        mediaSession.setPlaybackState(PlaybackStateCompat.Builder().apply {
-            if (isPlaying) {
-                setActions(PlaybackStateCompat.ACTION_PLAY_PAUSE or PlaybackStateCompat.ACTION_PAUSE)
-            } else {
-                setActions(PlaybackStateCompat.ACTION_PLAY_PAUSE or PlaybackStateCompat.ACTION_PLAY)
-            }
-            setState(
-                    if (isPlaying) PlaybackStateCompat.STATE_PLAYING else PlaybackStateCompat.STATE_PAUSED,
-                    PlaybackStateCompat.PLAYBACK_POSITION_UNKNOWN,
-                    0f
-            )
-        }.build())
+        mediaSession.setPlaybackState(
+                Builder()
+                        .setState(
+                                if (isPlaying) STATE_PLAYING else STATE_PAUSED,
+                                PLAYBACK_POSITION_UNKNOWN,
+                                0f
+                        )
+                        .apply {
+                            setActions(
+                                    when {
+                                        isPlaying -> ACTION_PLAY_PAUSE or ACTION_PAUSE
+                                        else      -> ACTION_PLAY_PAUSE or ACTION_PLAY
+                                    }
+                            )
+                        }.build()
+        )
     }
 
-    private fun updateNotification(isPlaying: Boolean): Notification =
+    private fun updateNotification(): Notification =
             NotificationCompat.Builder(this, CHANNEL_ID).apply {
-                setContentTitle(STUDIO_BRUSSELS_TITLE)
-                setContentText(STUDIO_BRUSSELS_DESC)
+                val isPlaying = mediaController.playbackState.state == PlaybackStateCompat.STATE_PLAYING
+
+                setContentTitle(mediaController.metadata.description.title)
+                setContentText(mediaController.metadata.description.description)
 
                 val sessionActivity =
                         mediaSession.controller.sessionActivity
@@ -168,7 +215,7 @@ class MediaPlaybackService : MediaBrowserServiceCompat(), AudioManager.OnAudioFo
                 setDeleteIntent(
                         MediaButtonReceiver.buildMediaButtonPendingIntent(
                                 baseContext,
-                                PlaybackStateCompat.ACTION_STOP
+                                ACTION_STOP
                         )
                 )
 
@@ -183,7 +230,7 @@ class MediaPlaybackService : MediaBrowserServiceCompat(), AudioManager.OnAudioFo
                                 getString(if (isPlaying) R.string.pause else R.string.play),
                                 MediaButtonReceiver.buildMediaButtonPendingIntent(
                                         baseContext,
-                                        PlaybackStateCompat.ACTION_PLAY_PAUSE
+                                        ACTION_PLAY_PAUSE
                                 )
                         )
                 )
@@ -196,7 +243,7 @@ class MediaPlaybackService : MediaBrowserServiceCompat(), AudioManager.OnAudioFo
                                 .setCancelButtonIntent(
                                         MediaButtonReceiver.buildMediaButtonPendingIntent(
                                                 baseContext,
-                                                PlaybackStateCompat.ACTION_STOP
+                                                ACTION_STOP
                                         )
                                 )
                 )
@@ -213,10 +260,6 @@ class MediaPlaybackService : MediaBrowserServiceCompat(), AudioManager.OnAudioFo
         when (focusChange) {
             AudioManager.AUDIOFOCUS_LOSS                    -> {
                 if (audioPlayer.isPlaying) {
-                    //TODO:
-                    // Debatable:
-                    // Update the notification too or call handlePause?
-                    // or should we completely shut down the service?
                     handlePause()
                     audioPlayer.stopPlayback()
                 }
@@ -249,7 +292,7 @@ class MediaPlaybackService : MediaBrowserServiceCompat(), AudioManager.OnAudioFo
 
     override fun onLoadChildren(parentId: String, result: Result<MutableList<MediaBrowserCompat.MediaItem>>) = result.sendResult(null)
     override fun onGetRoot(clientPackageName: String, clientUid: Int, rootHints: Bundle?) = MediaBrowserServiceCompat.BrowserRoot(
-            MY_EMPTY_MEDIA_ROOT_ID,
+            EMPTY_MEDIA_ROOT_ID,
             null
     )
 }
