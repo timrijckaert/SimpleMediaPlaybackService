@@ -1,5 +1,6 @@
 package be.vrt.simpleaudioplayback
 
+import android.annotation.TargetApi
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
@@ -10,6 +11,8 @@ import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.graphics.BitmapFactory
+import android.media.AudioAttributes
+import android.media.AudioFocusRequest
 import android.media.AudioManager
 import android.media.AudioManager.ACTION_AUDIO_BECOMING_NOISY
 import android.media.AudioManager.AUDIOFOCUS_GAIN
@@ -37,8 +40,10 @@ import android.support.v4.media.session.PlaybackStateCompat.Builder
 import android.support.v4.media.session.PlaybackStateCompat.PLAYBACK_POSITION_UNKNOWN
 import android.support.v4.media.session.PlaybackStateCompat.STATE_PAUSED
 import android.support.v4.media.session.PlaybackStateCompat.STATE_PLAYING
+import android.util.Log
 import androidx.annotation.RequiresApi
 import androidx.core.app.NotificationCompat
+import androidx.media.AudioAttributesCompat
 import androidx.media.MediaBrowserServiceCompat
 import androidx.media.session.MediaButtonReceiver
 import com.devbrackets.android.exomedia.AudioPlayer
@@ -61,8 +66,11 @@ class MediaPlaybackService : MediaBrowserServiceCompat(), AudioManager.OnAudioFo
     private lateinit var mediaSession: MediaSessionCompat
     private lateinit var mediaController: MediaControllerCompat
     private var isForegroundService = false
+    private var shouldPlayWhenReady = false
 
     private val notificationManager get() = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+    private val audioManager get() = getSystemService(Context.AUDIO_SERVICE) as AudioManager
+
     private val audioPlayer by lazy {
         AudioPlayer(this@MediaPlaybackService).apply {
             setWakeMode(this@MediaPlaybackService, PowerManager.PARTIAL_WAKE_LOCK)
@@ -171,10 +179,7 @@ class MediaPlaybackService : MediaBrowserServiceCompat(), AudioManager.OnAudioFo
     }
 
     private fun handlePlay() {
-        if (!successfullyRetrievedAudioFocus()) {
-            return
-        }
-
+        setPlayWhenReady(true)
         audioPlayer.start()
         setMediaPlaybackState(true)
     }
@@ -199,7 +204,7 @@ class MediaPlaybackService : MediaBrowserServiceCompat(), AudioManager.OnAudioFo
     }
 
     private fun updateNotification(state: PlaybackStateCompat) {
-        fun buildNotification() : Notification {
+        fun buildNotification(): Notification {
             if (shouldCreateNowPlayingChannel()) {
                 initializeChannelForOreo()
             }
@@ -269,7 +274,7 @@ class MediaPlaybackService : MediaBrowserServiceCompat(), AudioManager.OnAudioFo
             null
         }
 
-        when(updatedState) {
+        when (updatedState) {
             PlaybackStateCompat.STATE_BUFFERING,
             PlaybackStateCompat.STATE_PLAYING -> {
                 registerReceiver(noisyReceiver, IntentFilter(ACTION_AUDIO_BECOMING_NOISY))
@@ -282,7 +287,7 @@ class MediaPlaybackService : MediaBrowserServiceCompat(), AudioManager.OnAudioFo
                     notificationManager.notify(NOTIFICATION_ID, notification)
                 }
             }
-            else -> {
+            else                              -> {
                 unregisterReceiver(noisyReceiver)
 
                 if (isForegroundService) {
@@ -304,27 +309,84 @@ class MediaPlaybackService : MediaBrowserServiceCompat(), AudioManager.OnAudioFo
         }
     }
 
-    private fun successfullyRetrievedAudioFocus(): Boolean =
-            (getSystemService(Context.AUDIO_SERVICE) as AudioManager).requestAudioFocus(
-                    this,
-                    STREAM_MUSIC,
-                    AUDIOFOCUS_GAIN
-            ) == AUDIOFOCUS_GAIN
+    @get:RequiresApi(Build.VERSION_CODES.O)
+    private val audioFocusRequest by lazy { buildFocusRequest() }
+
+    private val audioAttributes = AudioAttributesCompat.Builder()
+            .setContentType(AudioAttributesCompat.CONTENT_TYPE_MUSIC)
+            .setUsage(AudioAttributesCompat.USAGE_MEDIA)
+            .build()
+
+    @TargetApi(Build.VERSION_CODES.O)
+    private fun buildFocusRequest(): AudioFocusRequest =
+            AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN)
+                    .setAudioAttributes(audioAttributes.unwrap() as AudioAttributes)
+                    .setOnAudioFocusChangeListener(this)
+                    .build()
+
+    @RequiresApi(Build.VERSION_CODES.O)
+    private fun requestAudioFocusOreo(): Int = audioManager.requestAudioFocus(audioFocusRequest)
+
+    @RequiresApi(Build.VERSION_CODES.O)
+    private fun abandonAudioFocusOreo() = audioManager.abandonAudioFocusRequest(audioFocusRequest)
 
     override fun onAudioFocusChange(focusChange: Int) {
         when (focusChange) {
-            AUDIOFOCUS_LOSS                    -> {
-                if (audioPlayer.isPlaying) {
-                    handlePause()
-                    audioPlayer.stopPlayback()
+            AUDIOFOCUS_GAIN -> {
+                if (shouldPlayWhenReady) {
+                    audioPlayer.setVolume(1F, 1F)
                 }
+                shouldPlayWhenReady = false
             }
-            AUDIOFOCUS_LOSS_TRANSIENT          -> handlePause()
-            AUDIOFOCUS_LOSS_TRANSIENT_CAN_DUCK -> audioPlayer.setVolume(0.3F, 0.3F)
-            AUDIOFOCUS_GAIN                    -> {
-                audioPlayer.setVolume(1F, 1F)
-                handlePlay()
+            AUDIOFOCUS_LOSS_TRANSIENT_CAN_DUCK -> audioPlayer.setVolume(0.2F, 0.2F)
+            AUDIOFOCUS_LOSS_TRANSIENT -> {
+                shouldPlayWhenReady = true
+                handlePause()
             }
+            AUDIOFOCUS_LOSS -> {
+                setPlayWhenReady(false)
+            }
+        }
+    }
+
+    private fun setPlayWhenReady(playWhenReady: Boolean) {
+        if (playWhenReady) {
+            requestAudioFocus()
+        } else {
+            if (shouldPlayWhenReady) {
+                shouldPlayWhenReady = false
+            }
+            abandonAudioFocus()
+        }
+    }
+
+    private fun requestAudioFocus() {
+        val result = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            requestAudioFocusOreo()
+        } else {
+            @Suppress("deprecation")
+            audioManager.requestAudioFocus(
+                    this,
+                    audioAttributes.legacyStreamType,
+                    AudioManager.AUDIOFOCUS_GAIN
+            )
+        }
+
+        // Call the listener whenever focus is granted - even the first time!
+        if (result == AudioManager.AUDIOFOCUS_REQUEST_GRANTED) {
+            shouldPlayWhenReady = true
+            onAudioFocusChange(AudioManager.AUDIOFOCUS_GAIN)
+        } else {
+            Log.i(LOG_TAG, "Playback not started: Audio focus request denied")
+        }
+    }
+
+    private fun abandonAudioFocus() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            abandonAudioFocusOreo()
+        } else {
+            @Suppress("deprecation")
+            audioManager.abandonAudioFocus(this)
         }
     }
 
