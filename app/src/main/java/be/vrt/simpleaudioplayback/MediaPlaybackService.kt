@@ -32,7 +32,6 @@ import android.support.v4.media.session.PlaybackStateCompat.STATE_PAUSED
 import android.support.v4.media.session.PlaybackStateCompat.STATE_PLAYING
 import androidx.annotation.RequiresApi
 import androidx.core.app.NotificationCompat
-import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
 import androidx.media.MediaBrowserServiceCompat
 import androidx.media.session.MediaButtonReceiver
@@ -54,6 +53,7 @@ class MediaPlaybackService : MediaBrowserServiceCompat(), AudioManager.OnAudioFo
 
     private lateinit var mediaSession: MediaSessionCompat
     private lateinit var mediaController: MediaControllerCompat
+    private var isForegroundService = false
 
     private val notificationManager get() = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
     private val audioPlayer by lazy {
@@ -74,8 +74,8 @@ class MediaPlaybackService : MediaBrowserServiceCompat(), AudioManager.OnAudioFo
     private val noisyReceiver by lazy {
         object : BroadcastReceiver() {
             override fun onReceive(context: Context, intent: Intent) {
-                if (audioPlayer.isPlaying) {
-                    handlePause()
+                if (intent.action == AudioManager.ACTION_AUDIO_BECOMING_NOISY) {
+                    mediaController.transportControls.pause()
                 }
             }
         }
@@ -138,17 +138,13 @@ class MediaPlaybackService : MediaBrowserServiceCompat(), AudioManager.OnAudioFo
         mediaController = MediaControllerCompat(this, mediaSession).also {
             it.registerCallback(object : MediaControllerCompat.Callback() {
                 override fun onPlaybackStateChanged(state: PlaybackStateCompat?) {
-                    updateNotification()
+                    state?.let { updateNotification(it) }
                 }
 
                 override fun onMetadataChanged(metadata: MediaMetadataCompat?) {
-                    startForeground(NOTIFICATION_ID, updateNotification())
+                    mediaController.playbackState?.let { updateNotification(it) }
                 }
             })
-        }
-
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            initializeChannelForOreo()
         }
 
         startService(Intent(applicationContext, this@MediaPlaybackService.javaClass))
@@ -158,12 +154,10 @@ class MediaPlaybackService : MediaBrowserServiceCompat(), AudioManager.OnAudioFo
         super.onDestroy()
         audioPlayer.release()
         mediaSession.release()
-        NotificationManagerCompat.from(this).cancel(NOTIFICATION_ID)
+        notificationManager.cancel(NOTIFICATION_ID)
     }
 
     private fun handlePause() {
-        unregisterReceiver(noisyReceiver)
-        stopForeground(false)
         audioPlayer.pause()
         setMediaPlaybackState(false)
     }
@@ -173,7 +167,6 @@ class MediaPlaybackService : MediaBrowserServiceCompat(), AudioManager.OnAudioFo
             return
         }
 
-        registerReceiver(noisyReceiver, IntentFilter(AudioManager.ACTION_AUDIO_BECOMING_NOISY))
         audioPlayer.start()
         setMediaPlaybackState(true)
     }
@@ -197,9 +190,14 @@ class MediaPlaybackService : MediaBrowserServiceCompat(), AudioManager.OnAudioFo
         )
     }
 
-    private fun updateNotification(): Notification =
-            NotificationCompat.Builder(this, CHANNEL_ID).apply {
-                val isPlaying = mediaController.playbackState.state == PlaybackStateCompat.STATE_PLAYING
+    private fun updateNotification(state: PlaybackStateCompat) {
+        fun buildNotification() : Notification {
+            if (shouldCreateNowPlayingChannel()) {
+                initializeChannelForOreo()
+            }
+
+            return NotificationCompat.Builder(this, CHANNEL_ID).apply {
+                val isPlaying = mediaController.playbackState.isPlaying
 
                 setContentTitle(mediaController.metadata.description.title)
                 setContentText(mediaController.metadata.description.description)
@@ -218,6 +216,7 @@ class MediaPlaybackService : MediaBrowserServiceCompat(), AudioManager.OnAudioFo
                                 ACTION_STOP
                         )
                 )
+                setOnlyAlertOnce(true)
 
                 setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
 
@@ -247,7 +246,55 @@ class MediaPlaybackService : MediaBrowserServiceCompat(), AudioManager.OnAudioFo
                                         )
                                 )
                 )
-            }.build().also { NotificationManagerCompat.from(this@MediaPlaybackService).notify(NOTIFICATION_ID, it) }
+            }.build()
+        }
+
+        val updatedState = state.state
+        if (mediaController.metadata == null) {
+            return
+        }
+
+        // Skip building a notification when state is "none".
+        val notification: Notification? = if (updatedState != PlaybackStateCompat.STATE_NONE) {
+            buildNotification()
+        } else {
+            null
+        }
+
+        when(updatedState) {
+            PlaybackStateCompat.STATE_BUFFERING,
+            PlaybackStateCompat.STATE_PLAYING -> {
+                registerReceiver(noisyReceiver, IntentFilter(AudioManager.ACTION_AUDIO_BECOMING_NOISY))
+
+                if (!isForegroundService) {
+                    startService(Intent(applicationContext, this@MediaPlaybackService.javaClass))
+                    startForeground(NOTIFICATION_ID, notification)
+                    isForegroundService = true
+                } else if (notification != null) {
+                    notificationManager.notify(NOTIFICATION_ID, notification)
+                }
+            }
+            else -> {
+                unregisterReceiver(noisyReceiver)
+
+                if (isForegroundService) {
+                    stopForeground(false)
+                    isForegroundService = false
+
+                    // If playback has ended, also stop the service.
+                    if (updatedState == PlaybackStateCompat.STATE_NONE) {
+                        stopSelf()
+                    }
+
+                    if (notification != null) {
+                        notificationManager.notify(NOTIFICATION_ID, notification)
+                    } else {
+                        stopForeground(false)
+                    }
+                }
+            }
+        }
+    }
 
     private fun successfullyRetrievedAudioFocus(): Boolean =
             (getSystemService(Context.AUDIO_SERVICE) as AudioManager).requestAudioFocus(
@@ -286,9 +333,16 @@ class MediaPlaybackService : MediaBrowserServiceCompat(), AudioManager.OnAudioFo
                             CHANNEL_ID,
                             "whatever",
                             NotificationManager.IMPORTANCE_LOW
-                    ).apply { description = "whatever channel name" })
+                    ).apply { description = "VRT Audio Service" })
         }
     }
+
+    private fun shouldCreateNowPlayingChannel() =
+            Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && !nowPlayingChannelExists()
+
+    @RequiresApi(Build.VERSION_CODES.O)
+    fun nowPlayingChannelExists() =
+            notificationManager.getNotificationChannel(CHANNEL_ID) != null
 
     override fun onLoadChildren(parentId: String, result: Result<MutableList<MediaBrowserCompat.MediaItem>>) = result.sendResult(null)
     override fun onGetRoot(clientPackageName: String, clientUid: Int, rootHints: Bundle?) = MediaBrowserServiceCompat.BrowserRoot(
