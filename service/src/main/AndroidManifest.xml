@@ -1,2 +1,30 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
-          package="be.rijckaert.tim"/>
+          package="be.rijckaert.tim">
+
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
+    <uses-permission android:name="android.permission.INTERNET"/>
+    <uses-permission android:name="android.permission.WAKE_LOCK"/>
+
+    <permission android:name="android.permission.MEDIA_CONTENT_CONTROL"/>
+
+    <application>
+        <service
+            android:name=".SimpleMediaPlaybackService"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MEDIA_BUTTON"/>
+                <action android:name="android.media.AUDIO_BECOMING_NOISY"/>
+
+                <action android:name="android.media.browse.MediaBrowserService"/>
+            </intent-filter>
+        </service>
+
+        <!--  This will allow you to intercept media control button interactions and headphone events on devices running KitKat and earlier. -->
+        <receiver android:name="androidx.media.session.MediaButtonReceiver">
+            <intent-filter>
+                <action android:name="android.intent.action.MEDIA_BUTTON"/>
+                <action android:name="android.media.AUDIO_BECOMING_NOISY"/>
+            </intent-filter>
+        </receiver>
+    </application>
+</manifest>

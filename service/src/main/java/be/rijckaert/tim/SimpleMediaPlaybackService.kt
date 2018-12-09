@@ -89,15 +89,14 @@ class SimpleMediaPlaybackService : MediaBrowserServiceCompat(), AudioManager.OnA
         }
     }
 
-    private val noisyReceiver by lazy {
-        object : BroadcastReceiver() {
-            override fun onReceive(context: Context, intent: Intent) {
-                if (intent.action == ACTION_AUDIO_BECOMING_NOISY) {
-                    mediaController.transportControls.pause()
+    private val noisyReceiver =
+            object : BroadcastReceiver() {
+                override fun onReceive(context: Context, intent: Intent) {
+                    if (intent.action == ACTION_AUDIO_BECOMING_NOISY) {
+                        mediaController.transportControls.pause()
+                    }
                 }
             }
-        }
-    }
 
     private fun handlePause() {
         audioPlayer.pause()
@@ -155,7 +154,7 @@ class SimpleMediaPlaybackService : MediaBrowserServiceCompat(), AudioManager.OnA
 
                 setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
 
-                setSmallIcon(R.drawable.ic_notification_icon)
+                setSmallIcon(R.drawable.ic_audio_notification_icon)
                 setLargeIcon(mediaController.metadata.description.iconBitmap)
 
                 addAction(
@@ -209,7 +208,7 @@ class SimpleMediaPlaybackService : MediaBrowserServiceCompat(), AudioManager.OnA
                     notificationManager.notify(NOTIFICATION_ID, notification)
                 }
             }
-            else                              -> {
+            else          -> {
                 unregisterReceiver(noisyReceiver)
 
                 if (isForegroundService) {
