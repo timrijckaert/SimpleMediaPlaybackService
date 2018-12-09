@@ -1,4 +1,4 @@
-package be.vrt.simpleaudioplayback
+package be.rijckaert.tim
 
 import android.annotation.TargetApi
 import android.app.Notification
@@ -38,6 +38,8 @@ import android.support.v4.media.session.PlaybackStateCompat.ACTION_PLAY_PAUSE
 import android.support.v4.media.session.PlaybackStateCompat.ACTION_STOP
 import android.support.v4.media.session.PlaybackStateCompat.Builder
 import android.support.v4.media.session.PlaybackStateCompat.PLAYBACK_POSITION_UNKNOWN
+import android.support.v4.media.session.PlaybackStateCompat.STATE_BUFFERING
+import android.support.v4.media.session.PlaybackStateCompat.STATE_NONE
 import android.support.v4.media.session.PlaybackStateCompat.STATE_PAUSED
 import android.support.v4.media.session.PlaybackStateCompat.STATE_PLAYING
 import android.util.Log
@@ -49,7 +51,7 @@ import androidx.media.session.MediaButtonReceiver
 import com.devbrackets.android.exomedia.AudioPlayer
 import com.google.android.exoplayer2.C
 
-class MediaPlaybackService : MediaBrowserServiceCompat(), AudioManager.OnAudioFocusChangeListener {
+class SimpleMediaPlaybackService : MediaBrowserServiceCompat(), AudioManager.OnAudioFocusChangeListener {
 
     companion object {
         private const val EMPTY_MEDIA_ROOT_ID = "empty_root_id"
@@ -58,7 +60,7 @@ class MediaPlaybackService : MediaBrowserServiceCompat(), AudioManager.OnAudioFo
         const val EXTRA_DESC = "be.vrt.simple.audio.playback.EXTRA_DESC"
         const val EXTRA_ICON = "be.vrt.simple.audio.playback.EXTRA_ICON"
 
-        private const val LOG_TAG = "MediaPlaybackService"
+        private const val LOG_TAG = "MusicService"
         private const val CHANNEL_ID = "1349"
         private const val NOTIFICATION_ID = 1345
     }
@@ -72,8 +74,8 @@ class MediaPlaybackService : MediaBrowserServiceCompat(), AudioManager.OnAudioFo
     private val audioManager get() = getSystemService(Context.AUDIO_SERVICE) as AudioManager
 
     private val audioPlayer by lazy {
-        AudioPlayer(this@MediaPlaybackService).apply {
-            setWakeMode(this@MediaPlaybackService, PowerManager.PARTIAL_WAKE_LOCK)
+        AudioPlayer(this@SimpleMediaPlaybackService).apply {
+            setWakeMode(this@SimpleMediaPlaybackService, PowerManager.PARTIAL_WAKE_LOCK)
             setAudioStreamType(STREAM_MUSIC)
             prepareAsync()
             seekTo(C.TIME_UNSET)
@@ -140,13 +142,8 @@ class MediaPlaybackService : MediaBrowserServiceCompat(), AudioManager.OnAudioFo
                 setContentTitle(mediaController.metadata.description.title)
                 setContentText(mediaController.metadata.description.description)
 
-                val sessionActivity =
-                        mediaSession.controller.sessionActivity
-                            ?: PendingIntent.getActivity(
-                                    this@MediaPlaybackService,
-                                    0,
-                                    Intent(this@MediaPlaybackService, MediaPlayerActivity::class.java), 0
-                            )
+                val sessionActivity = mediaSession.controller.sessionActivity
+
                 setContentIntent(sessionActivity)
                 setDeleteIntent(
                         MediaButtonReceiver.buildMediaButtonPendingIntent(
@@ -193,19 +190,19 @@ class MediaPlaybackService : MediaBrowserServiceCompat(), AudioManager.OnAudioFo
         }
 
         // Skip building a notification when state is "none".
-        val notification: Notification? = if (updatedState != PlaybackStateCompat.STATE_NONE) {
+        val notification: Notification? = if (updatedState != STATE_NONE) {
             buildNotification()
         } else {
             null
         }
 
         when (updatedState) {
-            PlaybackStateCompat.STATE_BUFFERING,
-            PlaybackStateCompat.STATE_PLAYING -> {
+            STATE_BUFFERING,
+            STATE_PLAYING -> {
                 registerReceiver(noisyReceiver, IntentFilter(ACTION_AUDIO_BECOMING_NOISY))
 
                 if (!isForegroundService) {
-                    startService(Intent(applicationContext, this@MediaPlaybackService.javaClass))
+                    startService(Intent(applicationContext, this@SimpleMediaPlaybackService.javaClass))
                     startForeground(NOTIFICATION_ID, notification)
                     isForegroundService = true
                 } else if (notification != null) {
@@ -220,7 +217,7 @@ class MediaPlaybackService : MediaBrowserServiceCompat(), AudioManager.OnAudioFo
                     isForegroundService = false
 
                     // If playback has ended, also stop the service.
-                    if (updatedState == PlaybackStateCompat.STATE_NONE) {
+                    if (updatedState == STATE_NONE) {
                         stopSelf()
                     }
 
@@ -348,10 +345,10 @@ class MediaPlaybackService : MediaBrowserServiceCompat(), AudioManager.OnAudioFo
         ).apply {
             setMediaButtonReceiver(
                     PendingIntent.getBroadcast(
-                            this@MediaPlaybackService, 0, Intent(Intent.ACTION_MEDIA_BUTTON)
+                            this@SimpleMediaPlaybackService, 0, Intent(Intent.ACTION_MEDIA_BUTTON)
                             .apply {
                                 setClass(
-                                        this@MediaPlaybackService,
+                                        this@SimpleMediaPlaybackService,
                                         MediaButtonReceiver::class.java
                                 )
                             },
@@ -363,7 +360,7 @@ class MediaPlaybackService : MediaBrowserServiceCompat(), AudioManager.OnAudioFo
 
             setCallback(object : MediaSessionCompat.Callback() {
                 override fun onPrepare() {
-                    this@MediaPlaybackService.mediaSession.isActive = true
+                    this@SimpleMediaPlaybackService.mediaSession.isActive = true
                 }
 
                 override fun onPlay() {
@@ -405,7 +402,7 @@ class MediaPlaybackService : MediaBrowserServiceCompat(), AudioManager.OnAudioFo
             })
         }
 
-        startService(Intent(applicationContext, this@MediaPlaybackService.javaClass))
+        startService(Intent(applicationContext, this@SimpleMediaPlaybackService.javaClass))
     }
 
     override fun onDestroy() {
