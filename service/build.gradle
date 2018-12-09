@@ -1,5 +1,20 @@
+apply plugin: 'com.novoda.bintray-release'
 apply plugin: 'com.android.library'
 apply plugin: 'kotlin-android'
+
+publish {
+    def groupProjectId = "be.rijckaert.tim"
+    def artifactProjectId = "simple-media-playback-service"
+    def publishVersionId = "0.0.1"
+
+    userOrg = "timrijckaert"
+    repoName = "SimpleMediaPlaybackService"
+    groupId = groupProjectId
+    artifactId = artifactProjectId
+    publishVersion = publishVersionId
+    desc = 'A reference implementation of the media service for Android'
+    website = 'https://github.com/timrijckaert/SimpleMediaPlaybackService'
+}
 
 android {
     compileSdkVersion 28
