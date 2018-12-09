@@ -1,9 +1,5 @@
 <resources>
     <string name="app_name">SimpleAudioPlayback</string>
-
-    <string name="pause">Pauze</string>
-    <string name="play">Spelen</string>
-
     <string name="playStudioBrussel">Studio Brussel</string>
     <string name="playMNM">MNM</string>
 </resources>

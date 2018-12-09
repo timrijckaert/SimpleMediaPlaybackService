@@ -8,6 +8,7 @@ import android.support.v4.media.MediaMetadataCompat
 import android.support.v4.media.session.MediaControllerCompat
 import android.support.v4.media.session.PlaybackStateCompat
 import androidx.appcompat.app.AppCompatActivity
+import be.rijckaert.tim.SimpleMediaPlaybackService
 import kotlinx.android.synthetic.main.activity_main.*
 
 class MediaPlayerActivity : AppCompatActivity() {
@@ -50,7 +51,7 @@ class MediaPlayerActivity : AppCompatActivity() {
     private val mediaBrowser: MediaBrowserCompat by lazy {
         MediaBrowserCompat(
                 this,
-                ComponentName(this, MediaPlaybackService::class.java),
+                ComponentName(this, SimpleMediaPlaybackService::class.java),
                 connectionCallback,
                 null
         )
@@ -67,9 +68,9 @@ class MediaPlayerActivity : AppCompatActivity() {
             mediaPlaybackController.prepareFromMediaId(
                     "https://live-vrt.akamaized.net/groupc/live/f404f0f3-3917-40fd-80b6-a152761072fe/live.isml/.m3u8",
                     Bundle().apply {
-                        putString(MediaPlaybackService.EXTRA_TITLE, "Studio Brussel")
-                        putString(MediaPlaybackService.EXTRA_DESC, "Life is your mother")
-                        putInt(MediaPlaybackService.EXTRA_ICON, R.drawable.studio_brussel_logo)
+                        putString(SimpleMediaPlaybackService.EXTRA_TITLE, "Studio Brussel")
+                        putString(SimpleMediaPlaybackService.EXTRA_DESC, "Life is your mother")
+                        putInt(SimpleMediaPlaybackService.EXTRA_ICON, R.drawable.studio_brussel_logo)
                     }
             )
         }
@@ -78,9 +79,9 @@ class MediaPlayerActivity : AppCompatActivity() {
             mediaPlaybackController.prepareFromMediaId(
                     "https://live-radio.lwc.vrtcdn.be/groupa/live/68dc3b80-040e-4a75-a394-72f3bb7aff9a/live.isml/.m3u8 ",
                     Bundle().apply {
-                        putString(MediaPlaybackService.EXTRA_TITLE, "MNM")
-                        putString(MediaPlaybackService.EXTRA_DESC, "Music & More")
-                        putInt(MediaPlaybackService.EXTRA_ICON, R.drawable.mnm_logo)
+                        putString(SimpleMediaPlaybackService.EXTRA_TITLE, "MNM")
+                        putString(SimpleMediaPlaybackService.EXTRA_DESC, "Music & More")
+                        putInt(SimpleMediaPlaybackService.EXTRA_ICON, R.drawable.mnm_logo)
                     }
             )
         }

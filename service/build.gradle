@@ -1,0 +1,47 @@
+apply plugin: 'com.novoda.bintray-release'
+apply plugin: 'com.android.library'
+apply plugin: 'kotlin-android'
+
+publish {
+    def groupProjectId = "be.rijckaert.tim"
+    def artifactProjectId = "simple-media-playback-service"
+    def publishVersionId = "0.0.1"
+
+    userOrg = "timrijckaert"
+    repoName = "SimpleMediaPlaybackService"
+    groupId = groupProjectId
+    artifactId = artifactProjectId
+    publishVersion = publishVersionId
+    desc = 'A reference implementation of the media service for Android'
+    website = 'https://github.com/timrijckaert/SimpleMediaPlaybackService'
+}
+
+android {
+    compileSdkVersion 28
+
+    defaultConfig {
+        minSdkVersion 19
+        targetSdkVersion 28
+        versionCode 1
+        versionName "1.0"
+
+        testInstrumentationRunner "android.support.test.runner.AndroidJUnitRunner"
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+        }
+    }
+
+}
+
+dependencies {
+    implementation"org.jetbrains.kotlin:kotlin-stdlib-jdk7:$kotlin_version"
+    implementation 'androidx.appcompat:appcompat:1.1.0-alpha01'
+
+    implementation "androidx.media:media:1.1.0-alpha01"
+    implementation "androidx.legacy:legacy-support-v4:1.0.0"
+    implementation "com.devbrackets.android:exomedia:4.2.3"
+}

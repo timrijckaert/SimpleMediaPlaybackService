@@ -1,4 +1,4 @@
-package be.vrt.simpleaudioplayback
+package be.rijckaert.tim
 
 import android.support.v4.media.session.PlaybackStateCompat
 
