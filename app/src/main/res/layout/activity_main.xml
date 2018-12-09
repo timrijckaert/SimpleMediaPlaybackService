@@ -7,11 +7,16 @@
     android:orientation="vertical"
     tools:context=".MediaPlayerActivity">
 
-    <ToggleButton
-        android:id="@+id/playPause"
+    <Button
+        android:id="@+id/studioBrussel"
+        android:text="@string/playStudioBrussel"
         android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:textOff="@string/play"
-        android:textOn="@string/pause"/>
+        android:layout_height="wrap_content"/>
+
+    <Button
+        android:id="@+id/mnm"
+        android:text="@string/playMNM"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"/>
 
 </LinearLayout>
