@@ -2,7 +2,7 @@
 
 # What?
 
-Simple Music Service that is able to stream a simple audio stream to be used like a radio player. ([Studio Brussels][2] and [MNM][3] from [VRT][1])
+Simple Music Service that is able to stream a simple audio stream to be used like a radio player. ([Studio Brussels][2] and [MNM][3] from [VRT][1])  
 No metadata is (_yet_) included.  
 
 The used player is [ExoMedia][4], but any player would do.
