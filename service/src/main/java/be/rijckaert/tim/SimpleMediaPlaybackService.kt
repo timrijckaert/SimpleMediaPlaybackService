@@ -236,7 +236,7 @@ class SimpleMediaPlaybackService : MediaBrowserServiceCompat(), AudioManager.OnA
             notificationManager.createNotificationChannel(
                     NotificationChannel(
                             CHANNEL_ID,
-                            "whatever",
+                            "VRT Audio Service",
                             NotificationManager.IMPORTANCE_LOW
                     ).apply { description = "VRT Audio Service" })
         }
