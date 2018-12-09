@@ -9,7 +9,13 @@ import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
+import android.graphics.BitmapFactory
 import android.media.AudioManager
+import android.media.AudioManager.ACTION_AUDIO_BECOMING_NOISY
+import android.media.AudioManager.AUDIOFOCUS_GAIN
+import android.media.AudioManager.AUDIOFOCUS_LOSS
+import android.media.AudioManager.AUDIOFOCUS_LOSS_TRANSIENT
+import android.media.AudioManager.AUDIOFOCUS_LOSS_TRANSIENT_CAN_DUCK
 import android.media.AudioManager.STREAM_MUSIC
 import android.net.Uri
 import android.os.Build
@@ -17,7 +23,8 @@ import android.os.Bundle
 import android.os.PowerManager
 import android.support.v4.media.MediaBrowserCompat
 import android.support.v4.media.MediaMetadataCompat
-import android.support.v4.media.MediaMetadataCompat.METADATA_KEY_ALBUM
+import android.support.v4.media.MediaMetadataCompat.METADATA_KEY_ALBUM_ART
+import android.support.v4.media.MediaMetadataCompat.METADATA_KEY_ARTIST
 import android.support.v4.media.MediaMetadataCompat.METADATA_KEY_TITLE
 import android.support.v4.media.session.MediaControllerCompat
 import android.support.v4.media.session.MediaSessionCompat
@@ -32,7 +39,6 @@ import android.support.v4.media.session.PlaybackStateCompat.STATE_PAUSED
 import android.support.v4.media.session.PlaybackStateCompat.STATE_PLAYING
 import androidx.annotation.RequiresApi
 import androidx.core.app.NotificationCompat
-import androidx.core.content.ContextCompat
 import androidx.media.MediaBrowserServiceCompat
 import androidx.media.session.MediaButtonReceiver
 import com.devbrackets.android.exomedia.AudioPlayer
@@ -45,6 +51,7 @@ class MediaPlaybackService : MediaBrowserServiceCompat(), AudioManager.OnAudioFo
 
         const val EXTRA_TITLE = "be.vrt.simple.audio.playback.EXTRA_TITLE"
         const val EXTRA_DESC = "be.vrt.simple.audio.playback.EXTRA_DESC"
+        const val EXTRA_ICON = "be.vrt.simple.audio.playback.EXTRA_ICON"
 
         private const val LOG_TAG = "MediaPlaybackService"
         private const val CHANNEL_ID = "1349"
@@ -74,7 +81,7 @@ class MediaPlaybackService : MediaBrowserServiceCompat(), AudioManager.OnAudioFo
     private val noisyReceiver by lazy {
         object : BroadcastReceiver() {
             override fun onReceive(context: Context, intent: Intent) {
-                if (intent.action == AudioManager.ACTION_AUDIO_BECOMING_NOISY) {
+                if (intent.action == ACTION_AUDIO_BECOMING_NOISY) {
                     mediaController.transportControls.pause()
                 }
             }
@@ -126,7 +133,8 @@ class MediaPlaybackService : MediaBrowserServiceCompat(), AudioManager.OnAudioFo
                     setMetadata(
                             MediaMetadataCompat.Builder()
                                     .putString(METADATA_KEY_TITLE, extras.getString(EXTRA_TITLE))
-                                    .putString(METADATA_KEY_ALBUM, extras.getString(EXTRA_DESC))
+                                    .putString(METADATA_KEY_ARTIST, extras.getString(EXTRA_DESC))
+                                    .putBitmap(METADATA_KEY_ALBUM_ART, BitmapFactory.decodeResource(resources, extras.getInt(EXTRA_ICON)))
                                     .build()
                     )
                     handlePlay()
@@ -221,7 +229,7 @@ class MediaPlaybackService : MediaBrowserServiceCompat(), AudioManager.OnAudioFo
                 setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
 
                 setSmallIcon(R.drawable.ic_notification_icon)
-                color = ContextCompat.getColor(baseContext, R.color.colorPrimary)
+                setLargeIcon(mediaController.metadata.description.iconBitmap)
 
                 addAction(
                         NotificationCompat.Action(
@@ -264,7 +272,7 @@ class MediaPlaybackService : MediaBrowserServiceCompat(), AudioManager.OnAudioFo
         when(updatedState) {
             PlaybackStateCompat.STATE_BUFFERING,
             PlaybackStateCompat.STATE_PLAYING -> {
-                registerReceiver(noisyReceiver, IntentFilter(AudioManager.ACTION_AUDIO_BECOMING_NOISY))
+                registerReceiver(noisyReceiver, IntentFilter(ACTION_AUDIO_BECOMING_NOISY))
 
                 if (!isForegroundService) {
                     startService(Intent(applicationContext, this@MediaPlaybackService.javaClass))
@@ -299,21 +307,21 @@ class MediaPlaybackService : MediaBrowserServiceCompat(), AudioManager.OnAudioFo
     private fun successfullyRetrievedAudioFocus(): Boolean =
             (getSystemService(Context.AUDIO_SERVICE) as AudioManager).requestAudioFocus(
                     this,
-                    AudioManager.STREAM_MUSIC,
-                    AudioManager.AUDIOFOCUS_GAIN
-            ) == AudioManager.AUDIOFOCUS_GAIN
+                    STREAM_MUSIC,
+                    AUDIOFOCUS_GAIN
+            ) == AUDIOFOCUS_GAIN
 
     override fun onAudioFocusChange(focusChange: Int) {
         when (focusChange) {
-            AudioManager.AUDIOFOCUS_LOSS                    -> {
+            AUDIOFOCUS_LOSS                    -> {
                 if (audioPlayer.isPlaying) {
                     handlePause()
                     audioPlayer.stopPlayback()
                 }
             }
-            AudioManager.AUDIOFOCUS_LOSS_TRANSIENT          -> handlePause()
-            AudioManager.AUDIOFOCUS_LOSS_TRANSIENT_CAN_DUCK -> audioPlayer.setVolume(0.3F, 0.3F)
-            AudioManager.AUDIOFOCUS_GAIN                    -> {
+            AUDIOFOCUS_LOSS_TRANSIENT          -> handlePause()
+            AUDIOFOCUS_LOSS_TRANSIENT_CAN_DUCK -> audioPlayer.setVolume(0.3F, 0.3F)
+            AUDIOFOCUS_GAIN                    -> {
                 audioPlayer.setVolume(1F, 1F)
                 handlePlay()
             }
