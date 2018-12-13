@@ -25,7 +25,7 @@ This is the current state of the service:
 # How?
 
 ```
-implementation 'be.rijckaert.tim:simple-media-playback-service:0.0.1'
+implementation 'be.rijckaert.tim:simple-media-playback-service:${Version}'
 ```
 
 See sample folder for a full sample.
