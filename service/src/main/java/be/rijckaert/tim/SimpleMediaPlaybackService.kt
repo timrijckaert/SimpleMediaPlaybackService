@@ -48,7 +48,7 @@ import androidx.core.app.NotificationCompat
 import androidx.media.AudioAttributesCompat
 import androidx.media.MediaBrowserServiceCompat
 import androidx.media.session.MediaButtonReceiver
-import com.devbrackets.android.exomedia.EMAudioPlayer
+import com.devbrackets.android.exomedia.AudioPlayer
 
 class SimpleMediaPlaybackService : MediaBrowserServiceCompat(), AudioManager.OnAudioFocusChangeListener {
 
@@ -73,11 +73,11 @@ class SimpleMediaPlaybackService : MediaBrowserServiceCompat(), AudioManager.OnA
     private val audioManager get() = getSystemService(Context.AUDIO_SERVICE) as AudioManager
 
     private val audioPlayer by lazy {
-        EMAudioPlayer(this).apply {
+        AudioPlayer(this).apply {
             setWakeMode(this@SimpleMediaPlaybackService, PowerManager.PARTIAL_WAKE_LOCK)
             setAudioStreamType(STREAM_MUSIC)
             prepareAsync()
-            seekTo(Int.MIN_VALUE)
+            seekTo(Long.MIN_VALUE)
             setOnErrorListener {
                 stopSelf()
                 true
@@ -200,7 +200,13 @@ class SimpleMediaPlaybackService : MediaBrowserServiceCompat(), AudioManager.OnA
                 registerReceiver(noisyReceiver, IntentFilter(ACTION_AUDIO_BECOMING_NOISY))
 
                 if (!isForegroundService) {
-                    startService(Intent(applicationContext, this@SimpleMediaPlaybackService.javaClass))
+                    val audioServiceIntent = Intent(applicationContext, this@SimpleMediaPlaybackService.javaClass)
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                        startForegroundService(audioServiceIntent)
+                    } else {
+                        startService(audioServiceIntent)
+                    }
+
                     startForeground(NOTIFICATION_ID, notification)
                     isForegroundService = true
                 } else if (notification != null) {
@@ -374,7 +380,7 @@ class SimpleMediaPlaybackService : MediaBrowserServiceCompat(), AudioManager.OnA
                 }
 
                 override fun onPrepareFromMediaId(mediaId: String, extras: Bundle) {
-                    audioPlayer.setDataSource(this@SimpleMediaPlaybackService, Uri.parse(mediaId))
+                    audioPlayer.setDataSource(Uri.parse(mediaId))
                     setMetadata(
                             MediaMetadataCompat.Builder()
                                     .putString(METADATA_KEY_TITLE, extras.getString(EXTRA_TITLE))
@@ -399,8 +405,6 @@ class SimpleMediaPlaybackService : MediaBrowserServiceCompat(), AudioManager.OnA
                 }
             })
         }
-
-        startService(Intent(applicationContext, this@SimpleMediaPlaybackService.javaClass))
     }
 
     override fun onDestroy() {
