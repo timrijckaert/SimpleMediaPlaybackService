@@ -48,8 +48,7 @@ import androidx.core.app.NotificationCompat
 import androidx.media.AudioAttributesCompat
 import androidx.media.MediaBrowserServiceCompat
 import androidx.media.session.MediaButtonReceiver
-import com.devbrackets.android.exomedia.AudioPlayer
-import com.google.android.exoplayer2.C
+import com.devbrackets.android.exomedia.EMAudioPlayer
 
 class SimpleMediaPlaybackService : MediaBrowserServiceCompat(), AudioManager.OnAudioFocusChangeListener {
 
@@ -74,11 +73,11 @@ class SimpleMediaPlaybackService : MediaBrowserServiceCompat(), AudioManager.OnA
     private val audioManager get() = getSystemService(Context.AUDIO_SERVICE) as AudioManager
 
     private val audioPlayer by lazy {
-        AudioPlayer(this@SimpleMediaPlaybackService).apply {
+        EMAudioPlayer(this).apply {
             setWakeMode(this@SimpleMediaPlaybackService, PowerManager.PARTIAL_WAKE_LOCK)
             setAudioStreamType(STREAM_MUSIC)
             prepareAsync()
-            seekTo(C.TIME_UNSET)
+            seekTo(Int.MIN_VALUE)
             setOnErrorListener {
                 stopSelf()
                 true
@@ -375,7 +374,7 @@ class SimpleMediaPlaybackService : MediaBrowserServiceCompat(), AudioManager.OnA
                 }
 
                 override fun onPrepareFromMediaId(mediaId: String, extras: Bundle) {
-                    audioPlayer.setDataSource(Uri.parse(mediaId))
+                    audioPlayer.setDataSource(this@SimpleMediaPlaybackService, Uri.parse(mediaId))
                     setMetadata(
                             MediaMetadataCompat.Builder()
                                     .putString(METADATA_KEY_TITLE, extras.getString(EXTRA_TITLE))

@@ -5,7 +5,7 @@ buildscript {
         jcenter()
     }
     dependencies {
-        classpath 'com.android.tools.build:gradle:3.4.0-alpha08'
+        classpath 'com.android.tools.build:gradle:3.4.0-alpha09'
         classpath 'com.novoda:bintray-release:0.9'
         classpath "org.jetbrains.kotlin:kotlin-gradle-plugin:$kotlin_version"
     }
@@ -15,6 +15,9 @@ allprojects {
     repositories {
         google()
         jcenter()
+        maven {
+            url = "https://nexus.core.a51.be/repository/maven-public/"
+        }
     }
 }
 

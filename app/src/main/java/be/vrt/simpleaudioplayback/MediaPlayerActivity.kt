@@ -1,6 +1,7 @@
 package be.vrt.simpleaudioplayback
 
 import android.content.ComponentName
+import android.content.Intent
 import android.media.AudioManager
 import android.os.Bundle
 import android.support.v4.media.MediaBrowserCompat
@@ -9,6 +10,9 @@ import android.support.v4.media.session.MediaControllerCompat
 import android.support.v4.media.session.PlaybackStateCompat
 import androidx.appcompat.app.AppCompatActivity
 import be.rijckaert.tim.SimpleMediaPlaybackService
+import be.vrt.vualto.Configuration
+import be.vrt.vualto.PlayerActivity
+import be.vrt.vualto.SkinTheme
 import kotlinx.android.synthetic.main.activity_main.*
 
 class MediaPlayerActivity : AppCompatActivity() {
@@ -84,6 +88,19 @@ class MediaPlayerActivity : AppCompatActivity() {
                         putInt(SimpleMediaPlaybackService.EXTRA_ICON, R.drawable.mnm_logo)
                     }
             )
+        }
+
+        vualto.setOnClickListener {
+            val playerConfiguration = Configuration.Builder()
+                    .videoIDWith("vualto_mnm")
+                    .apiUrlWith("https://media-services-public.vrt.be/vualto-video-aggregator-web/rest/external/v1/")
+                    .skinThemeWith(SkinTheme.VRTNWS)
+                    .finishOnVideoEndWith(true)
+                    .build()
+            val playerIntent = Intent(this, PlayerActivity::class.java)
+            playerIntent.putExtra(Configuration.INTENT_KEY, playerConfiguration)
+
+            startActivity(playerIntent)
         }
     }
 
