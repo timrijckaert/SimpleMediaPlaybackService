@@ -5,33 +5,23 @@ import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
-import android.content.BroadcastReceiver
-import android.content.ComponentName
-import android.content.Context
-import android.content.Intent
-import android.content.IntentFilter
+import android.content.*
 import android.media.AudioAttributes
 import android.media.AudioFocusRequest
 import android.media.AudioManager
-import android.media.AudioManager.ACTION_AUDIO_BECOMING_NOISY
-import android.media.AudioManager.AUDIOFOCUS_GAIN
-import android.media.AudioManager.AUDIOFOCUS_LOSS
-import android.media.AudioManager.AUDIOFOCUS_LOSS_TRANSIENT
-import android.media.AudioManager.AUDIOFOCUS_LOSS_TRANSIENT_CAN_DUCK
-import android.media.AudioManager.STREAM_MUSIC
+import android.media.AudioManager.*
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.os.PowerManager
 import android.support.v4.media.MediaBrowserCompat
 import android.support.v4.media.MediaMetadataCompat
-import android.support.v4.media.MediaMetadataCompat.METADATA_KEY_ALBUM_ART
-import android.support.v4.media.MediaMetadataCompat.METADATA_KEY_ARTIST
-import android.support.v4.media.MediaMetadataCompat.METADATA_KEY_TITLE
+import android.support.v4.media.MediaMetadataCompat.*
 import android.support.v4.media.session.MediaControllerCompat
 import android.support.v4.media.session.MediaSessionCompat
 import android.support.v4.media.session.PlaybackStateCompat
 import android.support.v4.media.session.PlaybackStateCompat.*
+import android.support.v4.media.session.PlaybackStateCompat.Builder
 import android.util.Log
 import androidx.annotation.RequiresApi
 import androidx.core.app.NotificationCompat
@@ -40,6 +30,7 @@ import androidx.media.MediaBrowserServiceCompat
 import androidx.media.session.MediaButtonReceiver
 import com.devbrackets.android.exomedia.AudioPlayer
 import com.google.android.exoplayer2.C
+import kotlin.math.max
 
 class SimpleMediaPlaybackService : MediaBrowserServiceCompat(), AudioManager.OnAudioFocusChangeListener {
 
@@ -372,7 +363,7 @@ class SimpleMediaPlaybackService : MediaBrowserServiceCompat(), AudioManager.OnA
 
             setCallback(object : MediaSessionCompat.Callback() {
                 override fun onRewind() {
-                    audioPlayer.seekTo(audioPlayer.currentPosition - SKIP_THRESH_HOLDER)
+                    audioPlayer.seekTo(max(0, audioPlayer.currentPosition - SKIP_THRESH_HOLDER))
                 }
 
                 override fun onFastForward() {
