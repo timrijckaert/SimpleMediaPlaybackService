@@ -5,43 +5,23 @@ import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
-import android.content.BroadcastReceiver
-import android.content.ComponentName
-import android.content.Context
-import android.content.Intent
-import android.content.IntentFilter
-import android.graphics.BitmapFactory
+import android.content.*
 import android.media.AudioAttributes
 import android.media.AudioFocusRequest
 import android.media.AudioManager
-import android.media.AudioManager.ACTION_AUDIO_BECOMING_NOISY
-import android.media.AudioManager.AUDIOFOCUS_GAIN
-import android.media.AudioManager.AUDIOFOCUS_LOSS
-import android.media.AudioManager.AUDIOFOCUS_LOSS_TRANSIENT
-import android.media.AudioManager.AUDIOFOCUS_LOSS_TRANSIENT_CAN_DUCK
-import android.media.AudioManager.STREAM_MUSIC
+import android.media.AudioManager.*
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.os.PowerManager
 import android.support.v4.media.MediaBrowserCompat
 import android.support.v4.media.MediaMetadataCompat
-import android.support.v4.media.MediaMetadataCompat.METADATA_KEY_ALBUM_ART
-import android.support.v4.media.MediaMetadataCompat.METADATA_KEY_ARTIST
-import android.support.v4.media.MediaMetadataCompat.METADATA_KEY_TITLE
+import android.support.v4.media.MediaMetadataCompat.*
 import android.support.v4.media.session.MediaControllerCompat
 import android.support.v4.media.session.MediaSessionCompat
 import android.support.v4.media.session.PlaybackStateCompat
-import android.support.v4.media.session.PlaybackStateCompat.ACTION_PAUSE
-import android.support.v4.media.session.PlaybackStateCompat.ACTION_PLAY
-import android.support.v4.media.session.PlaybackStateCompat.ACTION_PLAY_PAUSE
-import android.support.v4.media.session.PlaybackStateCompat.ACTION_STOP
+import android.support.v4.media.session.PlaybackStateCompat.*
 import android.support.v4.media.session.PlaybackStateCompat.Builder
-import android.support.v4.media.session.PlaybackStateCompat.PLAYBACK_POSITION_UNKNOWN
-import android.support.v4.media.session.PlaybackStateCompat.STATE_BUFFERING
-import android.support.v4.media.session.PlaybackStateCompat.STATE_NONE
-import android.support.v4.media.session.PlaybackStateCompat.STATE_PAUSED
-import android.support.v4.media.session.PlaybackStateCompat.STATE_PLAYING
 import android.util.Log
 import androidx.annotation.RequiresApi
 import androidx.core.app.NotificationCompat
@@ -50,6 +30,7 @@ import androidx.media.MediaBrowserServiceCompat
 import androidx.media.session.MediaButtonReceiver
 import com.devbrackets.android.exomedia.AudioPlayer
 import com.google.android.exoplayer2.C
+import kotlin.math.max
 
 class SimpleMediaPlaybackService : MediaBrowserServiceCompat(), AudioManager.OnAudioFocusChangeListener {
 
@@ -58,11 +39,12 @@ class SimpleMediaPlaybackService : MediaBrowserServiceCompat(), AudioManager.OnA
 
         const val EXTRA_TITLE = "be.vrt.simple.audio.playback.EXTRA_TITLE"
         const val EXTRA_DESC = "be.vrt.simple.audio.playback.EXTRA_DESC"
-        const val EXTRA_ICON = "be.vrt.simple.audio.playback.EXTRA_ICON"
+        const val ALBUM_ART = "be.vrt.simple.audio.playback.ALBUM_ART"
 
         private const val LOG_TAG = "MusicService"
         private const val CHANNEL_ID = "1349"
         private const val NOTIFICATION_ID = 1345
+        private const val SKIP_THRESH_HOLDER = 10 * 1000
     }
 
     private lateinit var mediaSession: MediaSessionCompat
@@ -121,8 +103,8 @@ class SimpleMediaPlaybackService : MediaBrowserServiceCompat(), AudioManager.OnA
                             setActions(
                                     when {
                                         isPlaying -> ACTION_PLAY_PAUSE or ACTION_PAUSE
-                                        else      -> ACTION_PLAY_PAUSE or ACTION_PLAY
-                                    }
+                                        else -> ACTION_PLAY_PAUSE or ACTION_PLAY
+                                    } or ACTION_REWIND or ACTION_FAST_FORWARD
                             )
                         }.build()
         )
@@ -168,6 +150,28 @@ class SimpleMediaPlaybackService : MediaBrowserServiceCompat(), AudioManager.OnA
                         )
                 )
 
+                addAction(
+                        NotificationCompat.Action(
+                                R.drawable.ic_forward,
+                                getString(R.string.forward),
+                                MediaButtonReceiver.buildMediaButtonPendingIntent(
+                                        baseContext,
+                                        ACTION_FAST_FORWARD
+                                )
+                        )
+                )
+
+                addAction(
+                        NotificationCompat.Action(
+                                R.drawable.ic_replay,
+                                getString(R.string.replay),
+                                MediaButtonReceiver.buildMediaButtonPendingIntent(
+                                        baseContext,
+                                        ACTION_REWIND
+                                )
+                        )
+                )
+
                 setStyle(
                         androidx.media.app.NotificationCompat.MediaStyle()
                                 .setMediaSession(mediaSession.sessionToken)
@@ -208,7 +212,7 @@ class SimpleMediaPlaybackService : MediaBrowserServiceCompat(), AudioManager.OnA
                     notificationManager.notify(NOTIFICATION_ID, notification)
                 }
             }
-            else          -> {
+            else -> {
                 unregisterReceiver(noisyReceiver)
 
                 if (isForegroundService) {
@@ -261,7 +265,7 @@ class SimpleMediaPlaybackService : MediaBrowserServiceCompat(), AudioManager.OnA
 
     @TargetApi(Build.VERSION_CODES.O)
     private fun buildFocusRequest(): AudioFocusRequest =
-            AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN)
+            AudioFocusRequest.Builder(AUDIOFOCUS_GAIN)
                     .setAudioAttributes(audioAttributes.unwrap() as AudioAttributes)
                     .setOnAudioFocusChangeListener(this)
                     .build()
@@ -311,14 +315,14 @@ class SimpleMediaPlaybackService : MediaBrowserServiceCompat(), AudioManager.OnA
             audioManager.requestAudioFocus(
                     this,
                     audioAttributes.legacyStreamType,
-                    AudioManager.AUDIOFOCUS_GAIN
+                    AUDIOFOCUS_GAIN
             )
         }
 
         // Call the listener whenever focus is granted - even the first time!
         if (result == AudioManager.AUDIOFOCUS_REQUEST_GRANTED) {
             shouldPlayWhenReady = true
-            onAudioFocusChange(AudioManager.AUDIOFOCUS_GAIN)
+            onAudioFocusChange(AUDIOFOCUS_GAIN)
         } else {
             Log.i(LOG_TAG, "Playback not started: Audio focus request denied")
         }
@@ -355,9 +359,17 @@ class SimpleMediaPlaybackService : MediaBrowserServiceCompat(), AudioManager.OnA
                     )
             )
 
-            setPlaybackState(Builder().setActions(ACTION_PLAY or ACTION_PLAY_PAUSE).build())
+            setPlaybackState(Builder().setActions(ACTION_PLAY or ACTION_PLAY_PAUSE or ACTION_REWIND or ACTION_FAST_FORWARD).build())
 
             setCallback(object : MediaSessionCompat.Callback() {
+                override fun onRewind() {
+                    audioPlayer.seekTo(max(0, audioPlayer.currentPosition - SKIP_THRESH_HOLDER))
+                }
+
+                override fun onFastForward() {
+                    audioPlayer.seekTo(audioPlayer.currentPosition + SKIP_THRESH_HOLDER)
+                }
+
                 override fun onPrepare() {
                     this@SimpleMediaPlaybackService.mediaSession.isActive = true
                 }
@@ -380,7 +392,7 @@ class SimpleMediaPlaybackService : MediaBrowserServiceCompat(), AudioManager.OnA
                             MediaMetadataCompat.Builder()
                                     .putString(METADATA_KEY_TITLE, extras.getString(EXTRA_TITLE))
                                     .putString(METADATA_KEY_ARTIST, extras.getString(EXTRA_DESC))
-                                    .putBitmap(METADATA_KEY_ALBUM_ART, BitmapFactory.decodeResource(resources, extras.getInt(EXTRA_ICON)))
+                                    .putBitmap(METADATA_KEY_ALBUM_ART, extras.getParcelable(ALBUM_ART))
                                     .build()
                     )
                     handlePlay()
@@ -392,11 +404,11 @@ class SimpleMediaPlaybackService : MediaBrowserServiceCompat(), AudioManager.OnA
         mediaController = MediaControllerCompat(this, mediaSession).also {
             it.registerCallback(object : MediaControllerCompat.Callback() {
                 override fun onPlaybackStateChanged(state: PlaybackStateCompat?) {
-                    state?.let { updateNotification(it) }
+                    state?.let(::updateNotification)
                 }
 
                 override fun onMetadataChanged(metadata: MediaMetadataCompat?) {
-                    mediaController.playbackState?.let { updateNotification(it) }
+                    mediaController.playbackState?.let(::updateNotification)
                 }
             })
         }
@@ -417,7 +429,7 @@ class SimpleMediaPlaybackService : MediaBrowserServiceCompat(), AudioManager.OnA
     }
 
     override fun onLoadChildren(parentId: String, result: Result<MutableList<MediaBrowserCompat.MediaItem>>) = result.sendResult(null)
-    override fun onGetRoot(clientPackageName: String, clientUid: Int, rootHints: Bundle?) = MediaBrowserServiceCompat.BrowserRoot(
+    override fun onGetRoot(clientPackageName: String, clientUid: Int, rootHints: Bundle?) = BrowserRoot(
             EMPTY_MEDIA_ROOT_ID,
             null
     )
