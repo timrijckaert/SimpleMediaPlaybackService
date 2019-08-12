@@ -83,7 +83,7 @@ class MediaPlayerActivity : AppCompatActivity() {
         studioBrussel.setOnClickListener {
             uiScope.launch {
                 mediaPlaybackController.prepareFromMediaId(
-                        "https://live-vrt.akamaized.net/groupc/live/f404f0f3-3917-40fd-80b6-a152761072fe/live.isml/.m3u8",
+                        "https://ondemand-stag-vrt.cdn.eurovisioncdn.net/content/vod/aud-bc6ee269-09bc-4f08-b19c-63b2c75f6f6f-CDN_2/aud-bc6ee269-09bc-4f08-b19c-63b2c75f6f6f-CDN_2_nodrm_f424a3c4-3b0e-4e30-a7d4-1e7106250e38.ism/.mpd",
                         Bundle().apply {
                             putString(SimpleMediaPlaybackService.EXTRA_TITLE, "Studio Brussel")
                             putString(SimpleMediaPlaybackService.EXTRA_DESC, "Life is your mother")

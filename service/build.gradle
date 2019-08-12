@@ -5,7 +5,7 @@ apply plugin: 'kotlin-android'
 publish {
     def groupProjectId = "be.rijckaert.tim"
     def artifactProjectId = "simple-media-playback-service"
-    def publishVersionId = "0.0.4"
+    def publishVersionId = "0.0.5"
 
     userOrg = "timrijckaert"
     repoName = "SimpleMediaPlaybackService"
