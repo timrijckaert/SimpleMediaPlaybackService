@@ -29,10 +29,9 @@ import androidx.media.AudioAttributesCompat
 import androidx.media.MediaBrowserServiceCompat
 import androidx.media.session.MediaButtonReceiver
 import com.devbrackets.android.exomedia.AudioPlayer
-import com.google.android.exoplayer2.C
 import kotlin.math.max
 
-class SimpleMediaPlaybackService : MediaBrowserServiceCompat(), AudioManager.OnAudioFocusChangeListener {
+class SimpleMediaPlaybackService : MediaBrowserServiceCompat(), OnAudioFocusChangeListener {
 
     companion object {
         private const val EMPTY_MEDIA_ROOT_ID = "empty_root_id"
