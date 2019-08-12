@@ -2,6 +2,7 @@ package be.vrt.simpleaudioplayback
 
 import android.content.ComponentName
 import android.graphics.Bitmap
+import android.content.Intent
 import android.media.AudioManager
 import android.os.Bundle
 import android.support.v4.media.MediaBrowserCompat
@@ -12,9 +13,11 @@ import androidx.appcompat.app.AppCompatActivity
 import be.rijckaert.tim.SimpleMediaPlaybackService
 import com.bumptech.glide.Glide
 import com.bumptech.glide.request.target.Target
+import be.vrt.vualto.Configuration
+import be.vrt.vualto.PlayerActivity
+import be.vrt.vualto.SkinTheme
 import kotlinx.android.synthetic.main.activity_main.*
 import kotlinx.coroutines.*
-
 
 class MediaPlayerActivity : AppCompatActivity() {
 
@@ -104,6 +107,19 @@ class MediaPlayerActivity : AppCompatActivity() {
                         }
                 )
             }
+        }
+
+        vualto.setOnClickListener {
+            val playerConfiguration = Configuration.Builder()
+                    .videoIDWith("vualto_mnm")
+                    .apiUrlWith("https://media-services-public.vrt.be/vualto-video-aggregator-web/rest/external/v1/")
+                    .skinThemeWith(SkinTheme.VRTNWS)
+                    .finishOnVideoEndWith(true)
+                    .build()
+            val playerIntent = Intent(this, PlayerActivity::class.java)
+            playerIntent.putExtra(Configuration.INTENT_KEY, playerConfiguration)
+
+            startActivity(playerIntent)
         }
     }
 
